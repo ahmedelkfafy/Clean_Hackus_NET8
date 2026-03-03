@@ -286,8 +286,8 @@ public class MainViewModel : BindableObject
 
                 try
                 {
-                    // Run async MailKit calls synchronously inside this thread
-                    engine.CheckMailboxAsync(mailbox, CancellationToken.None).GetAwaiter().GetResult();
+                    // Run sync MailKit — no async deadlock risk
+                    engine.CheckMailbox(mailbox);
                 }
                 catch (ThreadInterruptedException) { break; }
                 catch { Statistics.IncrementError(); }

@@ -6,11 +6,11 @@ namespace Clean_Hackus_NET8.Services;
 
 /// <summary>
 /// Thread-safe file writer for checker results.
-/// Creates timestamped result folders with separate files per result type.
+/// Uses lock (not SemaphoreSlim) for synchronous thread-safe writes.
 /// </summary>
 public class ResultsSaver
 {
-    private static readonly SemaphoreSlim _writeLock = new(1, 1);
+    private static readonly object _writeLock = new();
     private string _resultsDir = string.Empty;
 
     private static readonly ResultsSaver _instance = new();
@@ -20,9 +20,6 @@ public class ResultsSaver
 
     private ResultsSaver() { }
 
-    /// <summary>
-    /// Initialize results directory with a timestamp.
-    /// </summary>
     public void Initialize()
     {
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
@@ -30,25 +27,24 @@ public class ResultsSaver
         Directory.CreateDirectory(_resultsDir);
     }
 
-    /// <summary>
-    /// Append a line to a result file (thread-safe).
-    /// </summary>
-    public async System.Threading.Tasks.Task SaveAsync(string fileName, string content)
+    /// <summary>Append line to file — thread-safe, synchronous.</summary>
+    public void Save(string fileName, string content)
     {
-        await _writeLock.WaitAsync();
-        try
+        lock (_writeLock)
         {
-            var filePath = Path.Combine(_resultsDir, fileName);
-            await File.AppendAllTextAsync(filePath, content + Environment.NewLine);
-        }
-        finally
-        {
-            _writeLock.Release();
+            try
+            {
+                var filePath = Path.Combine(_resultsDir, fileName);
+                File.AppendAllText(filePath, content + Environment.NewLine);
+            }
+            catch { }
         }
     }
 
-    public System.Threading.Tasks.Task SaveGoodAsync(string line) => SaveAsync("Good.txt", line);
-    public System.Threading.Tasks.Task SaveBadAsync(string line) => SaveAsync("Bad.txt", line);
-    public System.Threading.Tasks.Task SaveErrorAsync(string line) => SaveAsync("Error.txt", line);
-    public System.Threading.Tasks.Task SaveNoHostAsync(string line) => SaveAsync("NoHost.txt", line);
+    public void SaveGood(string line) => Save("Good.txt", line);
+    public void SaveBad(string line) => Save("Bad.txt", line);
+    public void SaveError(string line) => Save("Error.txt", line);
+    public void SaveNoHost(string line) => Save("NoHost.txt", line);
+    public void SaveFound(string line) => Save("Found.txt", line);
+    public void SaveBlocked(string line) => Save("Blocked.txt", line);
 }

@@ -1,23 +1,31 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Linq;
+using System.Net.Sockets;
 using Clean_Hackus_NET8.Models;
 using Clean_Hackus_NET8.Models.Enums;
-using MailKit.Net.Pop3;
 using MailKit.Security;
 using MimeKit;
 
 namespace Clean_Hackus_NET8.Net.Mail;
 
-public class Pop3Client : IMailHandler
+/// <summary>
+/// POP3 client — MailKit SYNC API only.
+/// Blocked detection, HostNotFound, proper error classification.
+/// </summary>
+public class Pop3Client : IDisposable
 {
     private readonly Mailbox _mailbox;
     private readonly Server _server;
-    private const int TIMEOUT_MS = 10000;
+    private const int TIMEOUT_MS = 15000;
 
     private MailKit.Net.Pop3.Pop3Client? _client;
+
+    private static readonly string[] BlockedKeywords = [
+        "temporarily blocked", "temporary block", "too many", "rate limit",
+        "try again later", "account disabled", "account locked", "suspended",
+        "login denied", "overquota"
+    ];
 
     public Pop3Client(Mailbox mailbox, Server server)
     {
@@ -25,9 +33,7 @@ public class Pop3Client : IMailHandler
         _server = server;
     }
 
-    // ─── Connect ──────────────────────────────────────────────────────
-
-    public async Task<OperationResult> ConnectAsync(Proxy? proxy, CancellationToken ct = default)
+    public OperationResult Connect()
     {
         try
         {
@@ -35,91 +41,59 @@ public class Pop3Client : IMailHandler
             _client.Timeout = TIMEOUT_MS;
             _client.ServerCertificateValidationCallback = (_, _, _, _) => true;
 
-            var secureOption = _server.Socket == Models.Enums.SocketType.SSL
+            var secureOption = _server.Socket == SocketType.SSL
                 ? SecureSocketOptions.SslOnConnect
                 : SecureSocketOptions.None;
 
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TIMEOUT_MS);
-
-            await _client.ConnectAsync(_server.Hostname, _server.Port, secureOption, cts.Token);
+            _client.Connect(_server.Hostname, _server.Port, secureOption);
             return OperationResult.Ok;
         }
-        catch (OperationCanceledException) { return OperationResult.Error; }
+        catch (SocketException ex) when (ex.SocketErrorCode == System.Net.Sockets.SocketError.HostNotFound)
+        {
+            return OperationResult.HostNotFound;
+        }
+        catch (SocketException) { return OperationResult.Error; }
+        catch (IOException) { return OperationResult.Error; }
+        catch (TimeoutException) { return OperationResult.Error; }
         catch { return OperationResult.Error; }
     }
 
-    // ─── Login ────────────────────────────────────────────────────────
-
-    public async Task<OperationResult> LoginAsync(CancellationToken ct = default)
+    public OperationResult Login()
     {
         if (_client == null || !_client.IsConnected) return OperationResult.Error;
 
         try
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TIMEOUT_MS);
-
-            await _client.AuthenticateAsync(_mailbox.Address, _mailbox.Password, cts.Token);
+            _client.Authenticate(_mailbox.Address, _mailbox.Password);
             return OperationResult.Ok;
         }
-        catch (MailKit.Security.AuthenticationException)
+        catch (AuthenticationException ex)
         {
+            var msg = ex.Message?.ToLowerInvariant() ?? "";
+            if (BlockedKeywords.Any(k => msg.Contains(k)))
+                return OperationResult.Blocked;
             return OperationResult.Bad;
         }
-        catch (OperationCanceledException) { return OperationResult.Error; }
+        catch (SocketException) { return OperationResult.Error; }
+        catch (IOException) { return OperationResult.Error; }
+        catch (TimeoutException) { return OperationResult.Error; }
         catch { return OperationResult.Error; }
     }
 
-    // ─── Get Message Count ────────────────────────────────────────────
-
     public int GetMessageCount()
     {
-        try { return _client?.Count ?? 0; }
-        catch { return 0; }
+        try { return _client?.Count ?? 0; } catch { return 0; }
     }
 
-    public Task<int> GetMessageCountAsync(CancellationToken ct = default)
-        => Task.FromResult(GetMessageCount());
-
-    // ─── Get Message ──────────────────────────────────────────────────
-
-    public async Task<(string Subject, string From, string Date, string Body)> GetMessageAsync(int index, CancellationToken ct = default)
+    public MimeMessage? GetMessage(int index)
     {
-        if (_client == null || !_client.IsAuthenticated) return ("", "", "", "");
-
-        try
-        {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TIMEOUT_MS);
-
-            var message = await _client.GetMessageAsync(index, cts.Token);
-
-            var subject = message.Subject ?? "(No Subject)";
-            var from = message.From?.ToString() ?? "";
-            var date = message.Date.ToString("yyyy-MM-dd HH:mm");
-            var body = message.HtmlBody ?? message.TextBody ?? "";
-
-            return (subject, from, date, body);
-        }
-        catch { return ("", "", "", ""); }
+        if (_client == null || !_client.IsAuthenticated) return null;
+        try { return _client.GetMessage(index); } catch { return null; }
     }
 
-    // ─── IMailHandler interface ───────────────────────────────────────
-
-    public Task SearchMessagesAsync(CancellationToken ct = default) => Task.CompletedTask;
-
-    public Task<OperationResult> SelectFolderAsync(Folder folder, CancellationToken ct = default)
-        => Task.FromResult(OperationResult.Ok); // POP3 has no folders
-
-    public async Task DisconnectAsync(CancellationToken ct = default)
+    public void Disconnect()
     {
-        try
-        {
-            if (_client?.IsConnected == true)
-                await _client.DisconnectAsync(true, ct);
-        }
-        catch { }
+        try { if (_client?.IsConnected == true) _client.Disconnect(true); } catch { }
     }
 
     public void Dispose()
