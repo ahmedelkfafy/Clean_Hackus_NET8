@@ -11,6 +11,8 @@
   <ItemGroup>
     <PackageReference Include="WPF-UI" Version="3.0.4" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2420.47" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    <PackageReference Include="DnsClient" Version="1.7.0" />
   </ItemGroup>
 
 </Project>

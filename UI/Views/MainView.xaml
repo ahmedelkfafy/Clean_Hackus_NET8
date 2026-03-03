@@ -4,7 +4,7 @@
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                  xmlns:viewmodels="clr-namespace:Clean_Hackus_NET8.UI.ViewModels"
                  Title="Hackus Mail Checker (.NET 8 core)"
-                 Width="1050" Height="750"
+                 Width="1100" Height="780"
                  WindowStartupLocation="CenterScreen"
                  ExtendsContentIntoTitleBar="True"
                  WindowBackdropType="Mica">
@@ -14,102 +14,148 @@
     </Window.DataContext>
 
     <Grid>
-        <ui:TitleBar Title="Hackus Mail Checker (.NET 8 Core)" />
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-        <Grid Margin="0,32,0,0">
+        <!-- Title Bar -->
+        <ui:TitleBar Grid.Row="0" Title="Hackus Mail Checker (.NET 8 Core)" />
+
+        <!-- Main Content -->
+        <Grid Grid.Row="1" Margin="24,16,24,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="280" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <ui:NavigationView Grid.Column="0" PaneDisplayMode="Left">
-                <ui:NavigationView.MenuItems>
-                    <ui:NavigationViewItem Content="Checker" Icon="{ui:SymbolIcon Checkmark24}" TargetPageType="{x:Type Page}" />
-                    <ui:NavigationViewItem Content="Proxies" Icon="{ui:SymbolIcon Globe24}" TargetPageType="{x:Type Page}" />
-                    <ui:NavigationViewItem Content="Results" Icon="{ui:SymbolIcon Folder24}" TargetPageType="{x:Type Page}" />
-                </ui:NavigationView.MenuItems>
-                <ui:NavigationView.FooterMenuItems>
-                    <ui:NavigationViewItem Content="Settings" Icon="{ui:SymbolIcon Settings24}" TargetPageType="{x:Type Page}" />
-                </ui:NavigationView.FooterMenuItems>
-            </ui:NavigationView>
+            <!-- Left Panel: Controls + Stats -->
+            <StackPanel Grid.Column="0" Margin="0,0,16,0">
 
-            <!-- Main Checker Dashboard View -->
-            <Grid Grid.Column="1" Margin="24">
-               <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="300" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+                <!-- Load Buttons -->
+                <ui:TextBlock Text="Data Sources" FontTypography="Subtitle" Margin="0,0,0,8" />
+                <ui:Button Content="Load Combo" Icon="{ui:SymbolIcon Document24}" Command="{Binding LoadComboCommand}" HorizontalAlignment="Stretch" Margin="0,0,0,6" />
+                <ui:Button Content="Load Servers (.db)" Icon="{ui:SymbolIcon Database24}" Command="{Binding LoadServersCommand}" HorizontalAlignment="Stretch" Margin="0,0,0,6" />
+                <ui:Button Content="Load Proxies" Icon="{ui:SymbolIcon Globe24}" Command="{Binding LoadProxiesCommand}" HorizontalAlignment="Stretch" Margin="0,0,0,12" />
 
-                    <StackPanel Grid.Column="0" Margin="0,0,0,16">
-                        <ui:CardAction Height="120" Padding="20">
-                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <TextBlock Text="Checked Items" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <TextBlock Text="{Binding Statistics.CheckedStrings}" FontSize="36" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-                            </StackPanel>
-                        </ui:CardAction>
-
-                        <ui:CardAction Height="100">
-                            <Grid Margin="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <ui:SymbolIcon Symbol="CheckmarkCircle24" Foreground="#4CAF50" FontSize="28" />
-                                <TextBlock Grid.Column="1" Text="Good/Hits" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="16" />
-                                <TextBlock Grid.Column="2" Text="{Binding Statistics.Good}" VerticalAlignment="Center" FontSize="20" FontWeight="Bold" />
-                            </Grid>
-                        </ui:CardAction>
-
-                        <ui:CardAction Height="100">
-                            <Grid Margin="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <ui:SymbolIcon Symbol="DismissCircle24" Foreground="#F44336" FontSize="28" />
-                                <TextBlock Grid.Column="1" Text="Bads" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="16" />
-                                <TextBlock Grid.Column="2" Text="{Binding Statistics.Bad}" VerticalAlignment="Center" FontSize="20" FontWeight="Bold" />
-                            </Grid>
-                        </ui:CardAction>
-                        
-                        <ui:CardAction Height="100">
-                            <Grid Margin="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <ui:SymbolIcon Symbol="Mail24" Foreground="#2196F3" FontSize="28" />
-                                <TextBlock Grid.Column="1" Text="Found Mails" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="16" />
-                                <TextBlock Grid.Column="2" Text="{Binding Statistics.Found}" VerticalAlignment="Center" FontSize="20" FontWeight="Bold" />
-                            </Grid>
-                        </ui:CardAction>
-
-                        <Grid Margin="0,16,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="8" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <ui:Button Grid.Column="0" Content="Start" Appearance="Primary" Command="{Binding StartCommand}" HorizontalAlignment="Stretch" />
-                            <ui:Button Grid.Column="2" Content="Stop" Appearance="Danger" Command="{Binding StopCommand}" HorizontalAlignment="Stretch" />
+                <!-- Loaded Info -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,4">
+                            <TextBlock Text="Combos:" />
+                            <TextBlock Text="{Binding ComboLoaded}" HorizontalAlignment="Right" FontWeight="Bold" />
+                        </Grid>
+                        <Grid Margin="0,0,0,4">
+                            <TextBlock Text="IMAP Servers:" />
+                            <TextBlock Text="{Binding ServersLoaded}" HorizontalAlignment="Right" FontWeight="Bold" />
+                        </Grid>
+                        <Grid>
+                            <TextBlock Text="Proxies:" />
+                            <TextBlock Text="{Binding ProxiesLoaded}" HorizontalAlignment="Right" FontWeight="Bold" />
                         </Grid>
                     </StackPanel>
-                    
-                    <ui:DataGrid Grid.Column="1" Margin="24,0,0,0" 
-                                 HeadersVisibility="Column" 
-                                 AutoGenerateColumns="False" 
+                </Border>
+
+                <!-- Threads Control -->
+                <ui:TextBlock Text="Threads" FontTypography="Subtitle" Margin="0,0,0,8" />
+                <ui:NumberBox Value="{Binding ThreadCount}" Minimum="1" Maximum="5000" Margin="0,0,0,12" />
+
+                <!-- Statistics Cards -->
+                <ui:TextBlock Text="Statistics" FontTypography="Subtitle" Margin="0,0,0,8" />
+
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,4">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Fill="#4CAF50" Width="10" Height="10" Margin="0,0,8,0" />
+                                <TextBlock Text="Good/Hits:" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Statistics.GoodMailsCount}" HorizontalAlignment="Right" FontWeight="Bold" Foreground="#4CAF50" />
+                        </Grid>
+                        <Grid Margin="0,0,0,4">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Fill="#F44336" Width="10" Height="10" Margin="0,0,8,0" />
+                                <TextBlock Text="Bad:" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Statistics.BadMailsCount}" HorizontalAlignment="Right" FontWeight="Bold" Foreground="#F44336" />
+                        </Grid>
+                        <Grid Margin="0,0,0,4">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Fill="#FF9800" Width="10" Height="10" Margin="0,0,8,0" />
+                                <TextBlock Text="Errors:" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Statistics.ErrorMailsCount}" HorizontalAlignment="Right" FontWeight="Bold" Foreground="#FF9800" />
+                        </Grid>
+                        <Grid Margin="0,0,0,4">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Fill="#9E9E9E" Width="10" Height="10" Margin="0,0,8,0" />
+                                <TextBlock Text="No Host:" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Statistics.NoHostMailsCount}" HorizontalAlignment="Right" FontWeight="Bold" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <TextBlock Text="Checked:" />
+                            <TextBlock HorizontalAlignment="Right" FontWeight="Bold">
+                                <TextBlock.Text>
+                                    <MultiBinding StringFormat="{}{0} / {1}">
+                                        <Binding Path="Statistics.CheckedStrings" />
+                                        <Binding Path="ComboLoaded" />
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Action Buttons -->
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="8" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ui:Button Grid.Column="0" Content="Start" Appearance="Primary" Command="{Binding StartCommand}" HorizontalAlignment="Stretch" />
+                    <ui:Button Grid.Column="2" Content="Stop" Appearance="Danger" Command="{Binding StopCommand}" HorizontalAlignment="Stretch" />
+                </Grid>
+
+                <ui:Button Content="Open Mail Viewer" Icon="{ui:SymbolIcon Mail24}" Command="{Binding OpenViewerCommand}" HorizontalAlignment="Stretch" Appearance="Secondary" />
+            </StackPanel>
+
+            <!-- Right Panel: Live Log -->
+            <Border Grid.Column="1" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <ui:TextBlock Grid.Row="0" Text="Checker Output" FontTypography="Subtitle" Margin="0,0,0,8" />
+                    <ui:DataGrid Grid.Row="1"
+                                 HeadersVisibility="Column"
+                                 AutoGenerateColumns="False"
                                  CanUserAddRows="False"
-                                 ItemsSource="{Binding Statistics.RecentLogs}">
+                                 IsReadOnly="True">
                         <ui:DataGrid.Columns>
-                            <DataGridTextColumn Header="Time" Binding="{Binding Time}" Width="120" />
-                            <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100" />
-                            <DataGridTextColumn Header="Message" Binding="{Binding Message}" Width="*" />
+                            <DataGridTextColumn Header="Time" Width="100" />
+                            <DataGridTextColumn Header="Result" Width="80" />
+                            <DataGridTextColumn Header="Email" Width="*" />
+                            <DataGridTextColumn Header="Server" Width="200" />
                         </ui:DataGrid.Columns>
                     </ui:DataGrid>
                 </Grid>
+            </Border>
         </Grid>
+
+        <!-- Bottom Status Bar -->
+        <Border Grid.Row="2" Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" Padding="16,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="300" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{Binding StatusText}" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <ProgressBar Grid.Column="1" Value="{Binding Progress}" Maximum="100" Height="6" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
     </Grid>
 </ui:FluentWindow>
