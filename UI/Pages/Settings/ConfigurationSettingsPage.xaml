@@ -1,0 +1,79 @@
+<Page x:Class="Clean_Hackus_NET8.UI.Pages.Settings.ConfigurationSettingsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      Title="Application Settings">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <ui:TextBlock Text="Global Configuration" FontTypography="Title" />
+            <ui:TextBlock Text="Manage background threads, network timeouts, and application preferences." 
+                          Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16">
+                <!-- Networking Settings -->
+                <ui:TextBlock Text="Networking &amp; Performance" FontTypography="Subtitle" />
+
+                <ui:CardControl>
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <ui:TextBlock Text="Global Threads" FontTypography="BodyStrong" />
+                            <ui:TextBlock Text="Concurrent connection limit for checking" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ui:NumberBox Value="{Binding ThreadsLimit}" Min="1" Max="5000" Width="120" />
+                </ui:CardControl>
+
+                <ui:CardControl>
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <ui:TextBlock Text="Connection Timeout (ms)" FontTypography="BodyStrong" />
+                            <ui:TextBlock Text="Maximum amount of time allowed for IMAP/POP3 ping" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ui:NumberBox Value="{Binding ConnectionTimeout}" Min="1000" Max="60000" Width="120" />
+                </ui:CardControl>
+
+                <!-- Processing Rules -->
+                <ui:TextBlock Text="Mailbox Processing Rules" FontTypography="Subtitle" Margin="0,16,0,0" />
+
+                <ui:CardControl>
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <ui:TextBlock Text="Automatic Re-checking" FontTypography="BodyStrong" />
+                            <ui:TextBlock Text="Rebrute domains missing direct configurations" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ui:ToggleSwitch IsChecked="{Binding AllowRebrute}" />
+                </ui:CardControl>
+
+                <ui:CardControl>
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <ui:TextBlock Text="Download Attachments" FontTypography="BodyStrong" />
+                            <ui:TextBlock Text="Automatically download letter files to disk" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ui:ToggleSwitch IsChecked="{Binding DownloadAttachments}" />
+                </ui:CardControl>
+
+                <!-- Action Bar -->
+                <Grid Margin="0,24,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    
+                    <ui:Button Grid.Column="1" Content="Save Settings" Appearance="Primary" Icon="{ui:SymbolIcon Symbol=Save24}" Command="{Binding SaveConfigurationCommand}" />
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>
