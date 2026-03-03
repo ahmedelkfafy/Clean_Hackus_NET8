@@ -3,8 +3,9 @@
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                  xmlns:wpf="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-                 Title="Mail Viewer"
-                 Width="1200" Height="800"
+                 Title="MAIL VIEWER"
+                 Width="1050" Height="700"
+                 MinWidth="850" MinHeight="600"
                  WindowStartupLocation="CenterScreen"
                  ExtendsContentIntoTitleBar="True"
                  WindowBackdropType="Mica">
@@ -17,78 +18,111 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ui:TitleBar Grid.Row="0" Title="Mail Viewer" />
+        <!-- Title Bar -->
+        <ui:TitleBar Grid.Row="0">
+            <ui:TitleBar.Header>
+                <StackPanel Orientation="Horizontal" Margin="8,0">
+                    <TextBlock Text="MAIL VIEWER" FontSize="13" Foreground="#bfbfbf" FontFamily="Consolas" VerticalAlignment="Center" />
+                </StackPanel>
+            </ui:TitleBar.Header>
+        </ui:TitleBar>
 
-        <!-- Quick Connect + Search Bar -->
-        <Grid Grid.Row="1" Margin="16,8,16,8">
+        <!-- Quick Connect Bar -->
+        <Border Grid.Row="1" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" Padding="12,8" Margin="8,0,8,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ui:TextBox Grid.Column="0" x:Name="QuickConnectBox"
+                            PlaceholderText="Paste email:password (auto-connects)"
+                            Text="{Binding QuickConnectInput, UpdateSourceTrigger=PropertyChanged}" />
+                <ui:Button Grid.Column="2" Content="Load Hits" Command="{Binding LoadHitsCommand}" />
+            </Grid>
+        </Border>
+
+        <!-- Main: 3 columns (Accounts+Folders | Messages | Body) -->
+        <Grid Grid.Row="2" Margin="8,8,8,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <ui:TextBox Grid.Column="0" x:Name="QuickConnectBox"
-                        PlaceholderText="Paste email:password (auto-connects)"
-                        Text="{Binding QuickConnectInput, UpdateSourceTrigger=PropertyChanged}" />
-            <ui:TextBox Grid.Column="2"
-                        PlaceholderText="Search messages..."
-                        Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" />
-            <ui:Button Grid.Column="3" Content="Search" Appearance="Primary" Command="{Binding SearchCommand}" Margin="4,0,0,0" />
-            <ui:Button Grid.Column="5" Content="Load Hits" Command="{Binding LoadHitsCommand}" />
-        </Grid>
-
-        <!-- Main Content: Accounts | Folders | Messages | Body -->
-        <Grid Grid.Row="2" Margin="16,0,16,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="180" />
-                <ColumnDefinition Width="140" />
-                <ColumnDefinition Width="250" />
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="260" />
+                <ColumnDefinition Width="8" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Accounts -->
-            <Border Grid.Column="0" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="8" Margin="0,0,8,0">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Accounts" FontWeight="Bold" Margin="4,0,0,4" />
-                    <ListBox Grid.Row="1" ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}"
-                             DisplayMemberPath="Address" Background="Transparent" BorderThickness="0" />
-                </Grid>
-            </Border>
+            <!-- Left: Accounts + Folders stacked -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="8" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-            <!-- Folders -->
-            <Border Grid.Column="1" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="8" Margin="0,0,8,0">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Folders" FontWeight="Bold" Margin="4,0,0,4" />
-                    <ListBox Grid.Row="1" ItemsSource="{Binding Folders}" SelectedItem="{Binding SelectedFolder}"
-                             Background="Transparent" BorderThickness="0" />
-                </Grid>
-            </Border>
+                <!-- Accounts list -->
+                <Border Grid.Row="0" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="📧 Accounts" FontSize="12" FontWeight="SemiBold" Foreground="#64FFDA" Margin="4,2,0,6" />
+                        <ListBox Grid.Row="1" ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}"
+                                 DisplayMemberPath="Address" Background="Transparent" BorderThickness="0"
+                                 FontSize="11" />
+                    </Grid>
+                </Border>
 
-            <!-- Messages -->
-            <Border Grid.Column="2" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="8" Margin="0,0,8,0">
+                <!-- Folders list -->
+                <Border Grid.Row="2" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="📁 Folders" FontSize="12" FontWeight="SemiBold" Foreground="#64FFDA" Margin="4,2,0,6" />
+                        <ListBox Grid.Row="1" ItemsSource="{Binding Folders}" SelectedItem="{Binding SelectedFolder}"
+                                 Background="Transparent" BorderThickness="0" FontSize="11" />
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Center: Messages list + Search -->
+            <Border Grid.Column="2" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="8">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Messages" FontWeight="Bold" Margin="4,0,0,4" />
-                    <ListBox Grid.Row="1" ItemsSource="{Binding Messages}" SelectedItem="{Binding SelectedMessage}"
+
+                    <TextBlock Grid.Row="0" Text="📨 Messages" FontSize="12" FontWeight="SemiBold" Foreground="#64FFDA" Margin="4,2,0,4" />
+
+                    <!-- Search -->
+                    <Grid Grid.Row="1" Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ui:TextBox Grid.Column="0" PlaceholderText="Search..."
+                                    Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" FontSize="11" />
+                        <ui:Button Grid.Column="1" Content="🔍" Command="{Binding SearchCommand}" Margin="4,0,0,0" Padding="8,4" />
+                    </Grid>
+
+                    <ListBox Grid.Row="2" ItemsSource="{Binding Messages}" SelectedItem="{Binding SelectedMessage}"
                              Background="Transparent" BorderThickness="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Margin="2">
-                                    <TextBlock Text="{Binding Subject}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding From}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                <StackPanel Margin="2,4">
+                                    <TextBlock Text="{Binding Subject}" FontSize="12" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding From}" FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" MaxWidth="140" />
+                                        <TextBlock Text=" • " FontSize="10" Foreground="#45475a" />
+                                        <TextBlock Text="{Binding Date}" FontSize="10" Foreground="#6c7086" />
+                                    </StackPanel>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -96,15 +130,15 @@
                 </Grid>
             </Border>
 
-            <!-- Body WebView2 -->
-            <Border Grid.Column="3" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="4">
+            <!-- Right: Message Body (WebView2) -->
+            <Border Grid.Column="4" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="4">
                 <wpf:WebView2 x:Name="MessageWebView" />
             </Border>
         </Grid>
 
         <!-- Status Bar -->
-        <Border Grid.Row="3" Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" Padding="16,8">
-            <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Border Grid.Row="3" Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" Padding="12,6" Margin="0,8,0,0">
+            <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
         </Border>
     </Grid>
 </ui:FluentWindow>

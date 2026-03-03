@@ -266,15 +266,33 @@ public class MainViewModel : BindableObject
 
         try
         {
+            // SemaphoreSlim for proper concurrency control — NOT raw Task.Run per thread
+            using var semaphore = new SemaphoreSlim(ThreadCount, ThreadCount);
+
             await Threads.RunAsync(async token =>
             {
+                var tasks = new System.Collections.Generic.List<Task>();
+
                 while (_comboQueue.TryDequeue(out var mailbox))
                 {
                     token.ThrowIfCancellationRequested();
-                    try { await engine.CheckMailboxAsync(mailbox, token); }
-                    catch (OperationCanceledException) { throw; }
-                    catch { Statistics.IncrementError(); }
+
+                    await semaphore.WaitAsync(token);
+                    var task = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await engine.CheckMailboxAsync(mailbox, token);
+                        }
+                        catch (OperationCanceledException) { }
+                        catch { Statistics.IncrementError(); }
+                        finally { semaphore.Release(); }
+                    }, token);
+
+                    tasks.Add(task);
                 }
+
+                await Task.WhenAll(tasks);
             }, ThreadCount);
         }
         catch { }

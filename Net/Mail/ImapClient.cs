@@ -17,9 +17,10 @@ public class ImapClient : IMailHandler
 {
     private readonly Mailbox _mailbox;
     private readonly Server _server;
-    private const int TIMEOUT_MS = 10000;
+    private const int TIMEOUT_MS = 15000;
 
     private MailKit.Net.Imap.ImapClient? _client;
+    private IMailFolder? _currentFolder;  // Track currently selected folder
 
     public ImapClient(Mailbox mailbox, Server server)
     {
@@ -65,7 +66,7 @@ public class ImapClient : IMailHandler
             await _client.AuthenticateAsync(_mailbox.Address, _mailbox.Password, cts.Token);
             return OperationResult.Ok;
         }
-        catch (MailKit.Security.AuthenticationException)
+        catch (AuthenticationException)
         {
             return OperationResult.Bad;
         }
@@ -73,7 +74,7 @@ public class ImapClient : IMailHandler
         catch { return OperationResult.Error; }
     }
 
-    // ─── Select Folder ────────────────────────────────────────────────
+    // ─── Select Folder (tracks the opened folder) ─────────────────────
 
     public async Task<OperationResult> SelectFolderAsync(Folder folder, CancellationToken ct = default)
     {
@@ -84,11 +85,28 @@ public class ImapClient : IMailHandler
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TIMEOUT_MS);
 
-            var mailFolder = folder.Name.Equals("INBOX", StringComparison.OrdinalIgnoreCase)
-                ? _client.Inbox
-                : await _client.GetFolderAsync(folder.Name, cts.Token);
+            IMailFolder mailFolder;
+            if (folder.Name.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
+            {
+                mailFolder = _client.Inbox;
+            }
+            else
+            {
+                // Try direct path first, then namespace search
+                try
+                {
+                    mailFolder = await _client.GetFolderAsync(folder.Name, cts.Token);
+                }
+                catch
+                {
+                    // Fallback: search through personal namespace
+                    var personal = _client.GetFolder(_client.PersonalNamespaces[0]);
+                    mailFolder = await personal.GetSubfolderAsync(folder.Name, cts.Token);
+                }
+            }
 
             await mailFolder.OpenAsync(FolderAccess.ReadOnly, cts.Token);
+            _currentFolder = mailFolder;
             return OperationResult.Ok;
         }
         catch { return OperationResult.Error; }
@@ -119,7 +137,7 @@ public class ImapClient : IMailHandler
         catch { return ["INBOX"]; }
     }
 
-    // ─── SEARCH ───────────────────────────────────────────────────────
+    // ─── SEARCH (uses currently selected folder) ──────────────────────
 
     public async Task<List<int>> SearchAsync(string criteria = "ALL", CancellationToken ct = default)
     {
@@ -128,33 +146,27 @@ public class ImapClient : IMailHandler
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TIMEOUT_MS * 3); // search can be slower
+            cts.CancelAfter(TIMEOUT_MS * 3);
 
-            var folder = _client.Inbox;
+            // Use tracked folder, or fallback to Inbox
+            var folder = _currentFolder ?? _client.Inbox;
             if (!folder.IsOpen)
                 await folder.OpenAsync(FolderAccess.ReadOnly, cts.Token);
 
             SearchQuery query;
             if (criteria.Equals("ALL", StringComparison.OrdinalIgnoreCase))
-            {
                 query = SearchQuery.All;
-            }
             else
-            {
-                // Parse our custom criteria format into MailKit SearchQuery
                 query = BuildSearchQuery(criteria);
-            }
 
             var uids = await folder.SearchAsync(query, cts.Token);
-            return uids.Select(u => u.Id).Cast<int>().ToList();
+            return uids.Select(u => (int)u.Id).ToList();
         }
         catch { return []; }
     }
 
     private static SearchQuery BuildSearchQuery(string criteria)
     {
-        // Support formats: "SUBJECT \"word\"", "FROM \"word\"", "BODY \"word\""
-        // and OR combinations
         var parts = criteria.Split(new[] { " OR " }, StringSplitOptions.RemoveEmptyEntries);
 
         SearchQuery? combined = null;
@@ -183,12 +195,11 @@ public class ImapClient : IMailHandler
         var end = s.LastIndexOf('"');
         if (start >= 0 && end > start)
             return s[(start + 1)..end];
-        // No quotes — take everything after the first space
         var spaceIdx = s.IndexOf(' ');
         return spaceIdx >= 0 ? s[(spaceIdx + 1)..].Trim() : s;
     }
 
-    // ─── FETCH message ────────────────────────────────────────────────
+    // ─── FETCH message (uses currently selected folder) ───────────────
 
     public async Task<(string Subject, string From, string Date, string Body)> FetchMessageAsync(int msgIndex, CancellationToken ct = default)
     {
@@ -199,7 +210,7 @@ public class ImapClient : IMailHandler
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TIMEOUT_MS);
 
-            var folder = _client.Inbox;
+            var folder = _currentFolder ?? _client.Inbox;
             if (!folder.IsOpen)
                 await folder.OpenAsync(FolderAccess.ReadOnly, cts.Token);
 
@@ -216,24 +227,9 @@ public class ImapClient : IMailHandler
         catch { return ("", "", "", ""); }
     }
 
-    // ─── NOOP ─────────────────────────────────────────────────────────
+    // ─── IMailHandler ─────────────────────────────────────────────────
 
-    public async Task NoopAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            if (_client?.IsConnected == true)
-                await _client.NoOpAsync(ct);
-        }
-        catch { }
-    }
-
-    // ─── IMailHandler interface ───────────────────────────────────────
-
-    public Task SearchMessagesAsync(CancellationToken ct = default)
-    {
-        return Task.CompletedTask;
-    }
+    public Task SearchMessagesAsync(CancellationToken ct = default) => Task.CompletedTask;
 
     public async Task DisconnectAsync(CancellationToken ct = default)
     {
@@ -249,5 +245,6 @@ public class ImapClient : IMailHandler
     {
         try { _client?.Dispose(); } catch { }
         _client = null;
+        _currentFolder = null;
     }
 }

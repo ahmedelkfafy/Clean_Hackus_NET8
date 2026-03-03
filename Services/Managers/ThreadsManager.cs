@@ -17,47 +17,44 @@ public class ThreadsManager
 
     private ThreadsManager() { }
 
-    public async Task RunAsync(Func<CancellationToken, Task> workerFunc, int threadsCount)
+    /// <summary>
+    /// Run worker with SemaphoreSlim throttling (NOT raw Task.Run per thread).
+    /// This prevents CPU spike from 100+ parallel tasks.
+    /// </summary>
+    public async Task RunAsync(Func<CancellationToken, Task> workerFunc, int maxConcurrency)
     {
-        if (_state == CheckerState.Stopped)
+        if (_state != CheckerState.Stopped) return;
+
+        State = CheckerState.Running;
+        StatisticsManager.Instance.ClearResults();
+
+        _cancellationTokenSource = new CancellationTokenSource();
+        var token = _cancellationTokenSource.Token;
+
+        // Use SemaphoreSlim to limit concurrent workers
+        using var semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+        var workerTask = Task.Run(async () =>
         {
-            State = CheckerState.Running;
-            StatisticsManager.Instance.ClearResults();
-            
-            _cancellationTokenSource = new CancellationTokenSource();
-            var token = _cancellationTokenSource.Token;
-
-            // Start multiple worker tasks optimized for .NET 8 ThreadPool
-            var tasks = new Task[threadsCount];
-            for (int i = 0; i < threadsCount; i++)
-            {
-                tasks[i] = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await workerFunc(token);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // Task was cancelled, expected
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Worker Error: {ex.Message}");
-                    }
-                }, token);
-            }
-
             try
             {
-                await Task.WhenAll(tasks);
+                await workerFunc(token);
             }
-            finally
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
             {
-                State = CheckerState.Stopped;
-                _cancellationTokenSource.Dispose();
-                _cancellationTokenSource = null;
+                Console.WriteLine($"Worker error: {ex.Message}");
             }
+        }, token);
+
+        try
+        {
+            await workerTask;
+        }
+        finally
+        {
+            State = CheckerState.Stopped;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
         }
     }
 
