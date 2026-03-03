@@ -15,12 +15,10 @@ public class ImapClient : IMailHandler
 {
     private readonly Mailbox _mailbox;
     private readonly Server _server;
+    private const int TIMEOUT_MS = 10000;
 
     private TcpClient? _tcpClient;
     private Stream? _stream;
-    private StreamReader? _reader;
-    private StreamWriter? _writer;
-
     private int _tagId = 0;
 
     public ImapClient(Mailbox mailbox, Server server)
@@ -31,114 +29,164 @@ public class ImapClient : IMailHandler
 
     private string GetTag() => $"A{Interlocked.Increment(ref _tagId):000}";
 
-    public async Task<OperationResult> ConnectAsync(Proxy? proxy, CancellationToken cancellationToken = default)
+    // ─── Raw IO (like original): write bytes + read line with timeout ──
+
+    private void SendCommand(string command)
+    {
+        if (_stream == null) throw new IOException("Not connected");
+        var bytes = Encoding.UTF8.GetBytes(command + "\r\n");
+        _stream.Write(bytes, 0, bytes.Length);
+        _stream.Flush();
+    }
+
+    private string? ReadLine(int timeoutMs = TIMEOUT_MS)
+    {
+        if (_stream == null) return null;
+
+        var sb = new StringBuilder();
+        var buffer = new byte[1];
+        var deadline = Environment.TickCount64 + timeoutMs;
+
+        while (Environment.TickCount64 < deadline)
+        {
+            if (_stream is NetworkStream ns && !ns.DataAvailable)
+            {
+                Thread.Sleep(10);
+                continue;
+            }
+
+            int bytesRead;
+            try { bytesRead = _stream.Read(buffer, 0, 1); }
+            catch (IOException) { break; }
+
+            if (bytesRead == 0) break;
+
+            char c = (char)buffer[0];
+            if (c == '\n')
+            {
+                var line = sb.ToString().TrimEnd('\r');
+                return line;
+            }
+            sb.Append(c);
+        }
+
+        return sb.Length > 0 ? sb.ToString() : null;
+    }
+
+    private string SendCommandGetResponse(string command)
+    {
+        SendCommand(command);
+        return ReadLine() ?? "";
+    }
+
+    // ─── Connect ──────────────────────────────────────────────────────
+
+    public Task<OperationResult> ConnectAsync(Proxy? proxy, CancellationToken ct = default)
     {
         try
         {
             _tcpClient = new TcpClient();
-            _tcpClient.ReceiveTimeout = 15000;
-            _tcpClient.SendTimeout = 15000;
-            await _tcpClient.ConnectAsync(_server.Hostname, _server.Port, cancellationToken);
+            _tcpClient.ReceiveTimeout = TIMEOUT_MS;
+            _tcpClient.SendTimeout = TIMEOUT_MS;
+
+            // Synchronous connect with timeout (like original)
+            var connectTask = _tcpClient.ConnectAsync(_server.Hostname, _server.Port);
+            if (!connectTask.Wait(TIMEOUT_MS, ct))
+            {
+                _tcpClient.Dispose();
+                return Task.FromResult(OperationResult.Error);
+            }
 
             _stream = _tcpClient.GetStream();
 
             if (_server.Socket == Models.Enums.SocketType.SSL)
             {
-                var sslStream = new SslStream(_stream, false, (sender, cert, chain, err) => true);
-                await sslStream.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
-                {
-                    TargetHost = _server.Hostname,
-                    RemoteCertificateValidationCallback = (sender, cert, chain, err) => true
-                }, cancellationToken);
+                var sslStream = new SslStream(_stream, false, (_, _, _, _) => true);
+                sslStream.AuthenticateAsClient(_server.Hostname);
                 _stream = sslStream;
             }
 
-            _reader = new StreamReader(_stream, Encoding.UTF8);
-            _writer = new StreamWriter(_stream, Encoding.UTF8) { AutoFlush = true };
+            var welcome = ReadLine();
+            if (welcome?.Contains("OK") != true)
+                return Task.FromResult(OperationResult.Error);
 
-            var welcome = await _reader.ReadLineAsync(cancellationToken);
-            if (welcome?.Contains("* OK") != true) return OperationResult.Error;
-
-            return OperationResult.Ok;
+            return Task.FromResult(OperationResult.Ok);
         }
-        catch (Exception)
+        catch
         {
-            return OperationResult.Error;
+            return Task.FromResult(OperationResult.Error);
         }
     }
 
-    public async Task<OperationResult> LoginAsync(CancellationToken cancellationToken = default)
-    {
-        if (_writer == null || _reader == null) return OperationResult.Error;
+    // ─── Login ────────────────────────────────────────────────────────
 
+    public Task<OperationResult> LoginAsync(CancellationToken ct = default)
+    {
         try
         {
             var tag = GetTag();
-            await _writer.WriteLineAsync($"{tag} LOGIN \"{_mailbox.Address}\" \"{_mailbox.Password}\"");
+            SendCommand($"{tag} LOGIN \"{_mailbox.Address}\" \"{_mailbox.Password}\"");
 
+            // Read all response lines until we get our tag response
             string? response;
-            while ((response = await _reader.ReadLineAsync(cancellationToken)) != null)
+            while ((response = ReadLine()) != null)
             {
                 if (response.StartsWith(tag))
                 {
-                    if (response.Contains(" OK ")) return OperationResult.Ok;
-                    if (response.Contains(" NO ")) return OperationResult.Bad;
+                    if (response.Contains(" OK "))
+                        return Task.FromResult(OperationResult.Ok);
+                    if (response.Contains(" NO ") || response.Contains(" BAD "))
+                        return Task.FromResult(OperationResult.Bad);
                     break;
                 }
             }
 
-            return OperationResult.Error;
+            return Task.FromResult(OperationResult.Error);
         }
-        catch (Exception)
+        catch
         {
-            return OperationResult.Error;
+            return Task.FromResult(OperationResult.Error);
         }
     }
 
-    public async Task<OperationResult> SelectFolderAsync(Folder folder, CancellationToken cancellationToken = default)
-    {
-        if (_writer == null || _reader == null) return OperationResult.Error;
+    // ─── Select Folder ────────────────────────────────────────────────
 
+    public Task<OperationResult> SelectFolderAsync(Folder folder, CancellationToken ct = default)
+    {
         try
         {
             var tag = GetTag();
-            await _writer.WriteLineAsync($"{tag} SELECT \"{folder.Name}\"");
+            SendCommand($"{tag} SELECT \"{folder.Name}\"");
 
             string? response;
-            while ((response = await _reader.ReadLineAsync(cancellationToken)) != null)
+            while ((response = ReadLine()) != null)
             {
                 if (response.StartsWith(tag))
-                {
-                    return response.Contains(" OK ") ? OperationResult.Ok : OperationResult.Error;
-                }
+                    return Task.FromResult(response.Contains(" OK ") ? OperationResult.Ok : OperationResult.Error);
             }
-            return OperationResult.Error;
+            return Task.FromResult(OperationResult.Error);
         }
-        catch (Exception)
+        catch
         {
-            return OperationResult.Error;
+            return Task.FromResult(OperationResult.Error);
         }
     }
 
-    // ─── Real IMAP LIST ───────────────────────────────────────────────
+    // ─── LIST folders ─────────────────────────────────────────────────
 
-    /// <summary>List all mailbox folders via IMAP LIST command.</summary>
-    public async Task<List<string>> ListFoldersAsync(CancellationToken ct = default)
+    public List<string> ListFolders()
     {
-        if (_writer == null || _reader == null) return ["INBOX"];
-
         try
         {
             var folders = new List<string>();
             var tag = GetTag();
-            await _writer.WriteLineAsync($"{tag} LIST \"\" \"*\"");
+            SendCommand($"{tag} LIST \"\" \"*\"");
 
             string? line;
-            while ((line = await _reader.ReadLineAsync(ct)) != null)
+            while ((line = ReadLine()) != null)
             {
                 if (line.StartsWith(tag)) break;
 
-                // Parse: * LIST (\Flags) "/" "FolderName"
                 if (line.StartsWith("* LIST"))
                 {
                     var lastQuote = line.LastIndexOf('"');
@@ -160,30 +208,24 @@ public class ImapClient : IMailHandler
         catch { return ["INBOX"]; }
     }
 
-    // ─── Real IMAP SEARCH ─────────────────────────────────────────────
+    // ─── SEARCH ───────────────────────────────────────────────────────
 
-    /// <summary>Search messages in the selected folder. Returns message UIDs.</summary>
-    public async Task<List<int>> SearchAsync(string criteria = "ALL", CancellationToken ct = default)
+    public List<int> Search(string criteria = "ALL")
     {
-        if (_writer == null || _reader == null) return [];
-
         try
         {
             var uids = new List<int>();
             var tag = GetTag();
-            await _writer.WriteLineAsync($"{tag} SEARCH {criteria}");
+            SendCommand($"{tag} SEARCH {criteria}");
 
             string? line;
-            while ((line = await _reader.ReadLineAsync(ct)) != null)
+            while ((line = ReadLine()) != null)
             {
                 if (line.StartsWith("* SEARCH"))
                 {
                     var parts = line["* SEARCH".Length..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
                     foreach (var p in parts)
-                    {
-                        if (int.TryParse(p, out var uid))
-                            uids.Add(uid);
-                    }
+                        if (int.TryParse(p, out var uid)) uids.Add(uid);
                 }
                 if (line.StartsWith(tag)) break;
             }
@@ -193,21 +235,18 @@ public class ImapClient : IMailHandler
         catch { return []; }
     }
 
-    // ─── Real IMAP FETCH headers + body ───────────────────────────────
+    // ─── FETCH message ────────────────────────────────────────────────
 
-    /// <summary>Fetch envelope (Subject, From, Date) and body for a message.</summary>
-    public async Task<(string Subject, string From, string Date, string Body)> FetchMessageAsync(int msgId, CancellationToken ct = default)
+    public (string Subject, string From, string Date, string Body) FetchMessage(int msgId)
     {
-        if (_writer == null || _reader == null) return ("", "", "", "");
-
         try
         {
             var tag = GetTag();
-            await _writer.WriteLineAsync($"{tag} FETCH {msgId} (BODY[HEADER.FIELDS (SUBJECT FROM DATE)] BODY[TEXT])");
+            SendCommand($"{tag} FETCH {msgId} (BODY[HEADER.FIELDS (SUBJECT FROM DATE)] BODY[TEXT])");
 
             var sb = new StringBuilder();
             string? line;
-            while ((line = await _reader.ReadLineAsync(ct)) != null)
+            while ((line = ReadLine()) != null)
             {
                 sb.AppendLine(line);
                 if (line.StartsWith(tag)) break;
@@ -218,11 +257,10 @@ public class ImapClient : IMailHandler
             var from = ExtractHeader(raw, "From:");
             var date = ExtractHeader(raw, "Date:");
 
-            // Extract body text (everything after the blank line in BODY[TEXT])
             var bodyStart = raw.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+            if (bodyStart < 0) bodyStart = raw.IndexOf("\n\n", StringComparison.Ordinal);
             var body = bodyStart > 0 ? raw[(bodyStart + 4)..] : "";
 
-            // Clean up IMAP artifacts from body
             var tagLine = body.LastIndexOf($"{tag} OK", StringComparison.Ordinal);
             if (tagLine > 0) body = body[..tagLine];
             body = body.Replace(")\r\n", "").Trim();
@@ -242,18 +280,22 @@ public class ImapClient : IMailHandler
         return raw[(idx + header.Length)..endIdx].Trim();
     }
 
-    // ─── IMAP NOOP (keep-alive) ───────────────────────────────────────
+    // ─── Async wrappers for interface ─────────────────────────────────
 
-    /// <summary>Send NOOP to keep connection alive.</summary>
-    public async Task NoopAsync(CancellationToken ct = default)
+    public Task<List<string>> ListFoldersAsync(CancellationToken ct = default) => Task.FromResult(ListFolders());
+    public Task<List<int>> SearchAsync(string criteria = "ALL", CancellationToken ct = default) => Task.FromResult(Search(criteria));
+    public Task<(string Subject, string From, string Date, string Body)> FetchMessageAsync(int msgId, CancellationToken ct = default) => Task.FromResult(FetchMessage(msgId));
+
+    // ─── NOOP ─────────────────────────────────────────────────────────
+
+    public void Noop()
     {
-        if (_writer == null || _reader == null) return;
         try
         {
             var tag = GetTag();
-            await _writer.WriteLineAsync($"{tag} NOOP");
+            SendCommand($"{tag} NOOP");
             string? line;
-            while ((line = await _reader.ReadLineAsync(ct)) != null)
+            while ((line = ReadLine(3000)) != null)
             {
                 if (line.StartsWith(tag)) break;
             }
@@ -261,37 +303,32 @@ public class ImapClient : IMailHandler
         catch { }
     }
 
-    // ─── Existing SearchMessagesAsync (interface) ─────────────────────
+    // ─── IMailHandler interface ───────────────────────────────────────
 
-    public async Task SearchMessagesAsync(CancellationToken cancellationToken = default)
+    public Task SearchMessagesAsync(CancellationToken ct = default)
     {
-        // Delegate to keyword search
         var settings = KeywordSettings.Instance;
         if (settings.Enabled && settings.HasKeywords)
         {
-            var selectResult = await SelectFolderAsync(new Folder { Name = "INBOX" }, cancellationToken);
-            if (selectResult == OperationResult.Ok)
-            {
-                var query = settings.BuildImapSearchQuery();
-                await SearchAsync(query, cancellationToken);
-            }
+            SelectFolderAsync(new Folder { Name = "INBOX" }, ct);
+            var query = settings.BuildImapSearchQuery();
+            Search(query);
         }
+        return Task.CompletedTask;
     }
 
-    public async Task DisconnectAsync(CancellationToken cancellationToken = default)
+    public Task DisconnectAsync(CancellationToken ct = default)
     {
-        if (_writer != null)
-        {
-            try { await _writer.WriteLineAsync($"{GetTag()} LOGOUT"); } catch { }
-        }
+        try { SendCommand($"{GetTag()} LOGOUT"); } catch { }
         Dispose();
+        return Task.CompletedTask;
     }
 
     public void Dispose()
     {
-        _writer?.Dispose();
-        _reader?.Dispose();
-        _stream?.Dispose();
-        _tcpClient?.Dispose();
+        try { _stream?.Dispose(); } catch { }
+        try { _tcpClient?.Dispose(); } catch { }
+        _stream = null;
+        _tcpClient = null;
     }
 }

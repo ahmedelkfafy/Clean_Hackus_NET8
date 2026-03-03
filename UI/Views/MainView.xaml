@@ -22,7 +22,6 @@
 
         <ui:TitleBar Grid.Row="0" Title="Hackus Mail Checker" />
 
-        <!-- Main Content -->
         <Grid Grid.Row="1" Margin="24,16,24,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="280" />
@@ -57,43 +56,39 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Settings -->
-                    <ui:TextBlock Text="Settings" FontTypography="Subtitle" Margin="0,0,0,8" />
-                    <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,12">
-                        <StackPanel>
-                            <!-- Threads -->
-                            <TextBlock Text="Threads" Margin="0,0,0,4" />
-                            <ui:NumberBox Value="{Binding ThreadCount}" Minimum="1" Maximum="5000" Margin="0,0,0,8" />
+                    <!-- Settings: Collapsible -->
+                    <Expander Header="⚙ Settings" IsExpanded="False" Margin="0,0,0,12">
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="12">
+                            <StackPanel>
+                                <TextBlock Text="Threads" Margin="0,0,0,4" />
+                                <ui:NumberBox Value="{Binding ThreadCount}" Minimum="1" Maximum="5000" Margin="0,0,0,8" />
 
-                            <!-- Proxy Toggle -->
-                            <Grid Margin="0,0,0,4">
-                                <TextBlock Text="Use Proxies" VerticalAlignment="Center" />
-                                <CheckBox IsChecked="{Binding UseProxy}" HorizontalAlignment="Right" />
-                            </Grid>
+                                <Grid Margin="0,0,0,4">
+                                    <TextBlock Text="Use Proxies" VerticalAlignment="Center" />
+                                    <CheckBox IsChecked="{Binding UseProxy}" HorizontalAlignment="Right" />
+                                </Grid>
 
-                            <!-- Proxy Type -->
-                            <TextBlock Text="Proxy Type" Margin="0,4,0,4" />
-                            <ComboBox SelectedIndex="{Binding SelectedProxyTypeIndex}" Margin="0,0,0,8">
-                                <ComboBoxItem Content="HTTP" />
-                                <ComboBoxItem Content="SOCKS4" />
-                                <ComboBoxItem Content="SOCKS5" />
-                            </ComboBox>
+                                <TextBlock Text="Proxy Type" Margin="0,4,0,4" />
+                                <ComboBox SelectedIndex="{Binding SelectedProxyTypeIndex}" Margin="0,0,0,8">
+                                    <ComboBoxItem Content="HTTP" />
+                                    <ComboBoxItem Content="SOCKS4" />
+                                    <ComboBoxItem Content="SOCKS5" />
+                                </ComboBox>
 
-                            <!-- Keyword Toggle -->
-                            <Grid Margin="0,4,0,4">
-                                <TextBlock Text="Keyword Search (IMAP only)" VerticalAlignment="Center" />
-                                <CheckBox IsChecked="{Binding KeywordEnabled}" HorizontalAlignment="Right" />
-                            </Grid>
+                                <Grid Margin="0,4,0,4">
+                                    <TextBlock Text="Keyword Search (IMAP only)" VerticalAlignment="Center" />
+                                    <CheckBox IsChecked="{Binding KeywordEnabled}" HorizontalAlignment="Right" />
+                                </Grid>
 
-                            <!-- Keywords -->
-                            <TextBlock Text="Sender Keywords (comma sep)" Margin="0,4,0,2" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                            <ui:TextBox Text="{Binding KeywordSender, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="paypal, amazon" Margin="0,0,0,4" />
-                            <TextBlock Text="Subject Keywords" Margin="0,0,0,2" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                            <ui:TextBox Text="{Binding KeywordSubject, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="receipt, order" Margin="0,0,0,4" />
-                            <TextBlock Text="Body Keywords" Margin="0,0,0,2" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                            <ui:TextBox Text="{Binding KeywordBody, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="subscription, verify" />
-                        </StackPanel>
-                    </Border>
+                                <TextBlock Text="Sender Keywords (comma)" Margin="0,4,0,2" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <ui:TextBox Text="{Binding KeywordSender, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="paypal, amazon" Margin="0,0,0,4" />
+                                <TextBlock Text="Subject Keywords" Margin="0,0,0,2" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <ui:TextBox Text="{Binding KeywordSubject, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="receipt, order" Margin="0,0,0,4" />
+                                <TextBlock Text="Body Keywords" Margin="0,0,0,2" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <ui:TextBox Text="{Binding KeywordBody, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="subscription" />
+                            </StackPanel>
+                        </Border>
+                    </Expander>
 
                     <!-- Statistics -->
                     <ui:TextBlock Text="Statistics" FontTypography="Subtitle" Margin="0,0,0,8" />
@@ -141,7 +136,7 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Action Buttons -->
+                    <!-- Buttons -->
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />

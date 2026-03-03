@@ -15,11 +15,10 @@ public class Pop3Client : IMailHandler
 {
     private readonly Mailbox _mailbox;
     private readonly Server _server;
+    private const int TIMEOUT_MS = 10000;
 
     private TcpClient? _tcpClient;
     private Stream? _stream;
-    private StreamReader? _reader;
-    private StreamWriter? _writer;
 
     public Pop3Client(Mailbox mailbox, Server server)
     {
@@ -27,73 +26,125 @@ public class Pop3Client : IMailHandler
         _server = server;
     }
 
-    public async Task<OperationResult> ConnectAsync(Proxy? proxy, CancellationToken cancellationToken = default)
+    // ─── Raw IO with timeout (like original) ──────────────────────────
+
+    private void SendCommand(string command)
+    {
+        if (_stream == null) throw new IOException("Not connected");
+        var bytes = Encoding.UTF8.GetBytes(command + "\r\n");
+        _stream.Write(bytes, 0, bytes.Length);
+        _stream.Flush();
+    }
+
+    private string? ReadLine(int timeoutMs = TIMEOUT_MS)
+    {
+        if (_stream == null) return null;
+
+        var sb = new StringBuilder();
+        var buffer = new byte[1];
+        var deadline = Environment.TickCount64 + timeoutMs;
+
+        while (Environment.TickCount64 < deadline)
+        {
+            if (_stream is NetworkStream ns && !ns.DataAvailable)
+            {
+                Thread.Sleep(10);
+                continue;
+            }
+
+            int bytesRead;
+            try { bytesRead = _stream.Read(buffer, 0, 1); }
+            catch (IOException) { break; }
+
+            if (bytesRead == 0) break;
+
+            char c = (char)buffer[0];
+            if (c == '\n')
+                return sb.ToString().TrimEnd('\r');
+            sb.Append(c);
+        }
+
+        return sb.Length > 0 ? sb.ToString() : null;
+    }
+
+    private string SendCommandGetResponse(string command)
+    {
+        SendCommand(command);
+        return ReadLine() ?? "";
+    }
+
+    private void SendCommandCheckOK(string command)
+    {
+        var response = SendCommandGetResponse(command);
+        if (!response.StartsWith("+OK", StringComparison.OrdinalIgnoreCase))
+            throw new Exception(response);
+    }
+
+    // ─── Connect ──────────────────────────────────────────────────────
+
+    public Task<OperationResult> ConnectAsync(Proxy? proxy, CancellationToken ct = default)
     {
         try
         {
             _tcpClient = new TcpClient();
-            _tcpClient.ReceiveTimeout = 15000;
-            _tcpClient.SendTimeout = 15000;
-            await _tcpClient.ConnectAsync(_server.Hostname, _server.Port, cancellationToken);
+            _tcpClient.ReceiveTimeout = TIMEOUT_MS;
+            _tcpClient.SendTimeout = TIMEOUT_MS;
+
+            var connectTask = _tcpClient.ConnectAsync(_server.Hostname, _server.Port);
+            if (!connectTask.Wait(TIMEOUT_MS, ct))
+            {
+                _tcpClient.Dispose();
+                return Task.FromResult(OperationResult.Error);
+            }
 
             _stream = _tcpClient.GetStream();
 
             if (_server.Socket == Models.Enums.SocketType.SSL)
             {
-                var sslStream = new SslStream(_stream, false, (sender, cert, chain, err) => true);
-                await sslStream.AuthenticateAsClientAsync(_server.Hostname);
+                var sslStream = new SslStream(_stream, false, (_, _, _, _) => true);
+                sslStream.AuthenticateAsClient(_server.Hostname);
                 _stream = sslStream;
             }
 
-            _reader = new StreamReader(_stream, Encoding.UTF8);
-            _writer = new StreamWriter(_stream, Encoding.UTF8) { AutoFlush = true };
-
-            var welcome = await _reader.ReadLineAsync(cancellationToken);
+            var welcome = ReadLine();
             if (welcome?.StartsWith("+OK") != true)
-                return OperationResult.Error;
+                return Task.FromResult(OperationResult.Error);
 
-            return OperationResult.Ok;
+            return Task.FromResult(OperationResult.Ok);
         }
-        catch (Exception)
+        catch
         {
-            return OperationResult.Error;
-        }
-    }
-
-    public async Task<OperationResult> LoginAsync(CancellationToken cancellationToken = default)
-    {
-        if (_writer == null || _reader == null) return OperationResult.Error;
-
-        try
-        {
-            await _writer.WriteLineAsync($"USER {_mailbox.Address}");
-            var userResponse = await _reader.ReadLineAsync(cancellationToken);
-            if (userResponse?.StartsWith("+OK") != true) return OperationResult.Bad;
-
-            await _writer.WriteLineAsync($"PASS {_mailbox.Password}");
-            var passResponse = await _reader.ReadLineAsync(cancellationToken);
-            if (passResponse?.StartsWith("+OK") != true) return OperationResult.Bad;
-
-            return OperationResult.Ok;
-        }
-        catch (Exception)
-        {
-            return OperationResult.Error;
+            return Task.FromResult(OperationResult.Error);
         }
     }
 
-    // ─── POP3 STAT (get message count) ────────────────────────────────
+    // ─── Login ────────────────────────────────────────────────────────
 
-    /// <summary>Get total message count in mailbox.</summary>
-    public async Task<int> GetMessageCountAsync(CancellationToken ct = default)
+    public Task<OperationResult> LoginAsync(CancellationToken ct = default)
     {
-        if (_writer == null || _reader == null) return 0;
         try
         {
-            await _writer.WriteLineAsync("STAT");
-            var response = await _reader.ReadLineAsync(ct);
-            // +OK 15 12345  (count bytes)
-            if (response?.StartsWith("+OK") == true)
+            SendCommandCheckOK($"USER {_mailbox.Address}");
+            SendCommandCheckOK($"PASS {_mailbox.Password}");
+            return Task.FromResult(OperationResult.Ok);
+        }
+        catch (Exception ex)
+        {
+            var msg = ex.Message.ToLower();
+            if (msg.Contains("err") || msg.Contains("invalid") || msg.Contains("denied") || msg.Contains("authentication"))
+                return Task.FromResult(OperationResult.Bad);
+            return Task.FromResult(OperationResult.Error);
+        }
+    }
+
+    // ─── STAT (message count) ─────────────────────────────────────────
+
+    public int GetMessageCount()
+    {
+        try
+        {
+            var response = SendCommandGetResponse("STAT");
+            if (response.StartsWith("+OK"))
             {
                 var parts = response.Split(' ');
                 if (parts.Length >= 2 && int.TryParse(parts[1], out var count))
@@ -104,24 +155,21 @@ public class Pop3Client : IMailHandler
         return 0;
     }
 
-    // ─── POP3 RETR (fetch message) ────────────────────────────────────
+    // ─── RETR (fetch message) ─────────────────────────────────────────
 
-    /// <summary>Fetch a message by its sequence number (1-based). Returns raw email text.</summary>
-    public async Task<string> RetrieveMessageAsync(int msgNumber, CancellationToken ct = default)
+    public string RetrieveMessage(int msgNumber)
     {
-        if (_writer == null || _reader == null) return "";
-
         try
         {
-            await _writer.WriteLineAsync($"RETR {msgNumber}");
-            var firstLine = await _reader.ReadLineAsync(ct);
+            SendCommand($"RETR {msgNumber}");
+            var firstLine = ReadLine();
             if (firstLine?.StartsWith("+OK") != true) return "";
 
             var sb = new StringBuilder();
             string? line;
-            while ((line = await _reader.ReadLineAsync(ct)) != null)
+            while ((line = ReadLine()) != null)
             {
-                if (line == ".") break; // POP3 end-of-message marker
+                if (line == ".") break;
                 sb.AppendLine(line);
             }
             return sb.ToString();
@@ -129,14 +177,13 @@ public class Pop3Client : IMailHandler
         catch { return ""; }
     }
 
-    /// <summary>Parse raw email headers from a retrieved message.</summary>
+    /// <summary>Parse raw email headers.</summary>
     public static (string Subject, string From, string Date, string Body) ParseRawMessage(string raw)
     {
         var subject = ExtractHeader(raw, "Subject:");
         var from = ExtractHeader(raw, "From:");
         var date = ExtractHeader(raw, "Date:");
 
-        // Body is after the first blank line
         var bodyIdx = raw.IndexOf("\r\n\r\n", StringComparison.Ordinal);
         if (bodyIdx < 0) bodyIdx = raw.IndexOf("\n\n", StringComparison.Ordinal);
         var body = bodyIdx > 0 ? raw[(bodyIdx + (raw[bodyIdx] == '\r' ? 4 : 2))..] : "";
@@ -154,45 +201,30 @@ public class Pop3Client : IMailHandler
         return raw[(idx + header.Length)..endIdx].Trim();
     }
 
-    // ─── POP3 NOOP (keep-alive) ───────────────────────────────────────
+    // ─── Async wrappers ───────────────────────────────────────────────
 
-    /// <summary>Send NOOP to keep connection alive.</summary>
-    public async Task NoopAsync(CancellationToken ct = default)
-    {
-        if (_writer == null || _reader == null) return;
-        try
-        {
-            await _writer.WriteLineAsync("NOOP");
-            await _reader.ReadLineAsync(ct); // consume +OK
-        }
-        catch { }
-    }
+    public Task<int> GetMessageCountAsync(CancellationToken ct = default) => Task.FromResult(GetMessageCount());
+    public Task<string> RetrieveMessageAsync(int msgNumber, CancellationToken ct = default) => Task.FromResult(RetrieveMessage(msgNumber));
 
-    public Task SearchMessagesAsync(CancellationToken cancellationToken = default)
-    {
-        return Task.CompletedTask;
-    }
+    // ─── IMailHandler interface ───────────────────────────────────────
 
-    public Task<OperationResult> SelectFolderAsync(Folder folder, CancellationToken cancellationToken = default)
-    {
-        // POP3 doesn't support folders
-        return Task.FromResult(OperationResult.Ok);
-    }
+    public Task SearchMessagesAsync(CancellationToken ct = default) => Task.CompletedTask;
 
-    public async Task DisconnectAsync(CancellationToken cancellationToken = default)
+    public Task<OperationResult> SelectFolderAsync(Folder folder, CancellationToken ct = default)
+        => Task.FromResult(OperationResult.Ok); // POP3 has no folders
+
+    public Task DisconnectAsync(CancellationToken ct = default)
     {
-        if (_writer != null)
-        {
-            try { await _writer.WriteLineAsync("QUIT"); } catch { }
-        }
+        try { SendCommand("QUIT"); } catch { }
         Dispose();
+        return Task.CompletedTask;
     }
 
     public void Dispose()
     {
-        _writer?.Dispose();
-        _reader?.Dispose();
-        _stream?.Dispose();
-        _tcpClient?.Dispose();
+        try { _stream?.Dispose(); } catch { }
+        try { _tcpClient?.Dispose(); } catch { }
+        _stream = null;
+        _tcpClient = null;
     }
 }

@@ -7,6 +7,6 @@ public partial class ViewerWindow : FluentWindow
     public ViewerWindow()
     {
         InitializeComponent();
-        DataContext = new ViewerViewModel(EmailWebView);
+        DataContext = new ViewerViewModel(MessageWebView);
     }
 }
