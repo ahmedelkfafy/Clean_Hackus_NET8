@@ -411,24 +411,19 @@ public class ViewerViewModel : BindableObject
                 body = $"<pre style='white-space:pre-wrap;word-wrap:break-word'>{System.Net.WebUtility.HtmlEncode(body)}</pre>";
             }
 
-            var html = $"""
-                <html>
-                <head><style>
-                    body {{ background:#1e1e2e; color:#cdd6f4; font-family:'Segoe UI',sans-serif; padding:24px; }}
-                    h2 {{ color:#89b4fa; margin-bottom:4px; }}
-                    .meta {{ color:#6c7086; font-size:13px; margin-bottom:16px; }}
-                    hr {{ border:1px solid #313244; }}
-                    a {{ color:#89b4fa; }}
-                    pre {{ color:#cdd6f4; }}
-                </style></head>
-                <body>
-                    <h2>{System.Net.WebUtility.HtmlEncode(message.Subject)}</h2>
-                    <div class="meta">From: {System.Net.WebUtility.HtmlEncode(message.From)} &bull; {System.Net.WebUtility.HtmlEncode(message.Date)}</div>
-                    <hr/>
-                    <div>{body}</div>
-                </body>
-                </html>
-                """;
+            var html = "<html><head><style>"
+                + "body { background:#1e1e2e; color:#cdd6f4; font-family:'Segoe UI',sans-serif; padding:24px; }"
+                + "h2 { color:#89b4fa; margin-bottom:4px; }"
+                + ".meta { color:#6c7086; font-size:13px; margin-bottom:16px; }"
+                + "hr { border:1px solid #313244; }"
+                + "a { color:#89b4fa; }"
+                + "pre { color:#cdd6f4; }"
+                + "</style></head><body>"
+                + $"<h2>{System.Net.WebUtility.HtmlEncode(message.Subject)}</h2>"
+                + $"<div class='meta'>From: {System.Net.WebUtility.HtmlEncode(message.From)} &bull; {System.Net.WebUtility.HtmlEncode(message.Date)}</div>"
+                + "<hr/>"
+                + $"<div>{body}</div>"
+                + "</body></html>";
 
             _webView.CoreWebView2?.NavigateToString(html);
         }
