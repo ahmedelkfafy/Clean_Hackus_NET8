@@ -10,7 +10,7 @@ using Clean_Hackus_NET8.Services.Managers;
 namespace Clean_Hackus_NET8.Services;
 
 /// <summary>
-/// Core checking engine with smart retry logic.
+/// Core checking engine with smart retry. Uses MailKit for IMAP/POP3.
 /// Normal: POP3 SSL → Non-SSL → IMAP SSL → Non-SSL
 /// Keyword mode: IMAP only
 /// </summary>
@@ -31,7 +31,7 @@ public class CheckerEngine
 
         var serversToTry = BuildFallbackChain(domain, keywordMode);
 
-        // Auto-discover POP3 if no servers and not keyword mode
+        // Auto-discover POP3 if no servers found
         if (serversToTry.Count == 0 && !keywordMode)
         {
             try
@@ -72,15 +72,16 @@ public class CheckerEngine
                     return;
 
                 case OperationResult.Error:
-                    continue; // try next server
+                    continue; // try next server in fallback chain
             }
         }
 
+        // All servers failed with Error
         _stats.IncrementError();
         await _results.SaveErrorAsync($"{mailbox.Address}:{mailbox.Password}");
     }
 
-    /// <summary>Smart retry: retries connection errors with backoff, not auth failures.</summary>
+    /// <summary>Smart retry: only retries connection errors, not auth failures.</summary>
     private async Task<OperationResult> TryServerWithRetryAsync(Mailbox mailbox, Server server, bool keywordMode, CancellationToken ct)
     {
         for (int attempt = 0; attempt <= MAX_RETRIES; attempt++)
@@ -91,8 +92,6 @@ public class CheckerEngine
                 await Task.Delay(RETRY_DELAYS_MS[Math.Min(attempt - 1, RETRY_DELAYS_MS.Length - 1)], ct);
 
             var result = await TryServerAsync(mailbox, server, keywordMode, ct);
-
-            // Only retry on connection Error, not on Bad (wrong password) or Ok
             if (result != OperationResult.Error)
                 return result;
         }

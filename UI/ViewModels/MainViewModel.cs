@@ -64,8 +64,11 @@ public class MainViewModel : BindableObject
     public double Progress
     {
         get => _progress;
-        set { _progress = value; OnPropertyChanged(); }
+        set { _progress = value; OnPropertyChanged(); OnPropertyChanged(nameof(ProgressPercent)); OnPropertyChanged(nameof(ProgressDash)); }
     }
+
+    public double ProgressPercent => _comboLoaded > 0 ? (double)Statistics.CheckedStrings / _comboLoaded * 100 : 0;
+    public double ProgressDash => _comboLoaded > 0 ? 100 - (double)Statistics.CheckedStrings / _comboLoaded * 100 : 100;
 
     // Settings
     private bool _useProxy;

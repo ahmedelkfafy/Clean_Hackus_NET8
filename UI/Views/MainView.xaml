@@ -3,8 +3,9 @@
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                  xmlns:viewmodels="clr-namespace:Clean_Hackus_NET8.UI.ViewModels"
-                 Title="Hackus Mail Checker"
-                 Width="1100" Height="800"
+                 Title="HMC .NET8"
+                 Width="1050" Height="700"
+                 MinWidth="1050" MinHeight="700"
                  WindowStartupLocation="CenterScreen"
                  ExtendsContentIntoTitleBar="True"
                  WindowBackdropType="Mica">
@@ -17,166 +18,282 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ui:TitleBar Grid.Row="0" Title="Hackus Mail Checker" />
+        <!-- Title Bar -->
+        <ui:TitleBar Grid.Row="0">
+            <ui:TitleBar.Header>
+                <StackPanel Orientation="Horizontal" Margin="8,0">
+                    <TextBlock Text="HMC" FontSize="16" FontWeight="Bold" Foreground="#c0ffe6" FontFamily="Consolas" VerticalAlignment="Center" />
+                    <TextBlock Text=" .NET8" FontSize="11" Foreground="#6c7086" VerticalAlignment="Center" Margin="2,0,0,0" />
+                </StackPanel>
+            </ui:TitleBar.Header>
+        </ui:TitleBar>
 
-        <Grid Grid.Row="1" Margin="24,16,24,0">
+        <!-- Main 3-Column Layout -->
+        <Grid Grid.Row="1" Margin="8">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="280" />
+                <ColumnDefinition Width="230" />
+                <ColumnDefinition Width="8" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="280" />
             </Grid.ColumnDefinitions>
 
-            <!-- Left Panel -->
-            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Margin="0,0,16,0">
-                <StackPanel>
+            <!-- ═══════════ LEFT COLUMN ═══════════ -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="8" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="8" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-                    <!-- Load Buttons -->
-                    <ui:TextBlock Text="Data" FontTypography="Subtitle" Margin="0,0,0,8" />
-                    <ui:Button Content="Load Combo" Icon="{ui:SymbolIcon Document24}" Command="{Binding LoadComboCommand}" HorizontalAlignment="Stretch" Margin="0,0,0,4" />
-                    <ui:Button Content="Load Servers (.db)" Icon="{ui:SymbolIcon Database24}" Command="{Binding LoadServersCommand}" HorizontalAlignment="Stretch" Margin="0,0,0,4" />
-                    <ui:Button Content="Load Proxies" Icon="{ui:SymbolIcon Globe24}" Command="{Binding LoadProxiesCommand}" HorizontalAlignment="Stretch" Margin="0,0,0,12" />
-
-                    <!-- Info -->
-                    <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,12">
-                        <StackPanel>
-                            <Grid Margin="0,0,0,4">
-                                <TextBlock Text="Combos:" />
-                                <TextBlock Text="{Binding ComboLoaded}" HorizontalAlignment="Right" FontWeight="Bold" />
-                            </Grid>
-                            <Grid Margin="0,0,0,4">
-                                <TextBlock Text="IMAP Servers:" />
-                                <TextBlock Text="{Binding ServersLoaded}" HorizontalAlignment="Right" FontWeight="Bold" />
-                            </Grid>
-                            <Grid>
-                                <TextBlock Text="Proxies:" />
-                                <TextBlock Text="{Binding ProxiesLoaded}" HorizontalAlignment="Right" FontWeight="Bold" />
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Settings: Collapsible -->
-                    <Expander Header="⚙ Settings" IsExpanded="False" Margin="0,0,0,12">
-                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="12">
-                            <StackPanel>
-                                <TextBlock Text="Threads" Margin="0,0,0,4" />
-                                <ui:NumberBox Value="{Binding ThreadCount}" Minimum="1" Maximum="5000" Margin="0,0,0,8" />
-
-                                <Grid Margin="0,0,0,4">
-                                    <TextBlock Text="Use Proxies" VerticalAlignment="Center" />
-                                    <CheckBox IsChecked="{Binding UseProxy}" HorizontalAlignment="Right" />
-                                </Grid>
-
-                                <TextBlock Text="Proxy Type" Margin="0,4,0,4" />
-                                <ComboBox SelectedIndex="{Binding SelectedProxyTypeIndex}" Margin="0,0,0,8">
-                                    <ComboBoxItem Content="HTTP" />
-                                    <ComboBoxItem Content="SOCKS4" />
-                                    <ComboBoxItem Content="SOCKS5" />
-                                </ComboBox>
-
-                                <Grid Margin="0,4,0,4">
-                                    <TextBlock Text="Keyword Search (IMAP only)" VerticalAlignment="Center" />
-                                    <CheckBox IsChecked="{Binding KeywordEnabled}" HorizontalAlignment="Right" />
-                                </Grid>
-
-                                <TextBlock Text="Sender Keywords (comma)" Margin="0,4,0,2" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <ui:TextBox Text="{Binding KeywordSender, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="paypal, amazon" Margin="0,0,0,4" />
-                                <TextBlock Text="Subject Keywords" Margin="0,0,0,2" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <ui:TextBox Text="{Binding KeywordSubject, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="receipt, order" Margin="0,0,0,4" />
-                                <TextBlock Text="Body Keywords" Margin="0,0,0,2" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <ui:TextBox Text="{Binding KeywordBody, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="subscription" />
-                            </StackPanel>
-                        </Border>
-                    </Expander>
-
-                    <!-- Statistics -->
-                    <ui:TextBlock Text="Statistics" FontTypography="Subtitle" Margin="0,0,0,8" />
-                    <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,12">
-                        <StackPanel>
-                            <Grid Margin="0,0,0,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <Ellipse Fill="#4CAF50" Width="10" Height="10" Margin="0,0,8,0" />
-                                    <TextBlock Text="Good:" />
-                                </StackPanel>
-                                <TextBlock Text="{Binding Statistics.GoodMailsCount}" HorizontalAlignment="Right" FontWeight="Bold" Foreground="#4CAF50" />
-                            </Grid>
-                            <Grid Margin="0,0,0,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <Ellipse Fill="#F44336" Width="10" Height="10" Margin="0,0,8,0" />
-                                    <TextBlock Text="Bad:" />
-                                </StackPanel>
-                                <TextBlock Text="{Binding Statistics.BadMailsCount}" HorizontalAlignment="Right" FontWeight="Bold" Foreground="#F44336" />
-                            </Grid>
-                            <Grid Margin="0,0,0,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <Ellipse Fill="#FF9800" Width="10" Height="10" Margin="0,0,8,0" />
-                                    <TextBlock Text="Errors:" />
-                                </StackPanel>
-                                <TextBlock Text="{Binding Statistics.ErrorMailsCount}" HorizontalAlignment="Right" FontWeight="Bold" Foreground="#FF9800" />
-                            </Grid>
-                            <Grid Margin="0,0,0,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <Ellipse Fill="#9E9E9E" Width="10" Height="10" Margin="0,0,8,0" />
-                                    <TextBlock Text="NoHost:" />
-                                </StackPanel>
-                                <TextBlock Text="{Binding Statistics.NoHostMailsCount}" HorizontalAlignment="Right" FontWeight="Bold" />
-                            </Grid>
-                            <Grid Margin="0,8,0,0">
-                                <TextBlock Text="Checked:" />
-                                <TextBlock HorizontalAlignment="Right" FontWeight="Bold">
+                <!-- Progress Circle + Start/Stop -->
+                <Border Grid.Row="0" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="16">
+                    <StackPanel HorizontalAlignment="Center">
+                        <!-- Circular Progress -->
+                        <Grid Width="150" Height="150" Margin="0,4,0,8">
+                            <Ellipse Stroke="#313244" StrokeThickness="6" />
+                            <Ellipse Stroke="#00FFB2" StrokeThickness="6" StrokeDashArray="100" StrokeDashOffset="{Binding ProgressDash}" />
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                <TextBlock HorizontalAlignment="Center" FontSize="18" FontWeight="Bold" Foreground="#cdd6f4">
                                     <TextBlock.Text>
-                                        <MultiBinding StringFormat="{}{0} / {1}">
+                                        <MultiBinding StringFormat="{}{0}/{1}">
                                             <Binding Path="Statistics.CheckedStrings" />
                                             <Binding Path="ComboLoaded" />
                                         </MultiBinding>
                                     </TextBlock.Text>
                                 </TextBlock>
+                                <TextBlock Text="{Binding ProgressPercent, StringFormat={}{0:F1}%}" HorizontalAlignment="Center" FontSize="12" Foreground="#00FFB2" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Start / Stop buttons -->
+                        <Grid Margin="0,0,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Command="{Binding StartCommand}" HorizontalAlignment="Stretch"
+                                    Background="#1a2e1a" BorderThickness="0" Padding="12,8">
+                                <TextBlock Text="START" FontSize="13" FontWeight="SemiBold" Foreground="#64FFD1" HorizontalAlignment="Center" />
+                            </Button>
+                            <Button Grid.Column="2" Command="{Binding StopCommand}" HorizontalAlignment="Stretch"
+                                    Background="#2e1a1a" BorderThickness="0" Padding="12,8">
+                                <TextBlock Text="STOP" FontSize="13" FontWeight="SemiBold" Foreground="#FF7070" HorizontalAlignment="Center" />
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Load Buttons + Info -->
+                <Border Grid.Row="2" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="0">
+                    <StackPanel>
+                        <!-- BASE / PROXY buttons -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Command="{Binding LoadComboCommand}" HorizontalAlignment="Stretch"
+                                    Background="{DynamicResource ControlFillColorDefaultBrush}" BorderThickness="0" Padding="0,14">
+                                <TextBlock Text="BASE" FontSize="13" Foreground="{DynamicResource TextFillColorPrimaryBrush}" HorizontalAlignment="Center" />
+                            </Button>
+                            <Button Grid.Column="1" Command="{Binding LoadProxiesCommand}" HorizontalAlignment="Stretch"
+                                    Background="{DynamicResource ControlFillColorDefaultBrush}" BorderThickness="0" Padding="0,14">
+                                <TextBlock Text="PROXY" FontSize="13" Foreground="{DynamicResource TextFillColorPrimaryBrush}" HorizontalAlignment="Center" />
+                            </Button>
+                        </Grid>
+
+                        <!-- Stats rows -->
+                        <StackPanel Margin="14,10,16,14">
+                            <!-- Total Lines -->
+                            <Grid Margin="0,6,0,0">
+                                <TextBlock Text="📄 Total Lines" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" />
+                                <TextBlock Text="{Binding ComboLoaded}" HorizontalAlignment="Right" FontSize="13" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            </Grid>
+                            <!-- Checked -->
+                            <Grid Margin="0,6,0,0">
+                                <TextBlock Text="✅ Checked" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" />
+                                <TextBlock Text="{Binding Statistics.CheckedStrings}" HorizontalAlignment="Right" FontSize="13" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            </Grid>
+                            <!-- Proxy -->
+                            <Grid Margin="0,6,0,0">
+                                <TextBlock Text="🌐 Proxy" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" />
+                                <TextBlock Text="{Binding ProxiesLoaded}" HorizontalAlignment="Right" FontSize="13" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            </Grid>
+                            <!-- Threads -->
+                            <Grid Margin="0,6,0,0">
+                                <TextBlock Text="⚡ Threads" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" />
+                                <TextBlock Text="{Binding ThreadCount}" HorizontalAlignment="Right" FontSize="13" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
                             </Grid>
                         </StackPanel>
-                    </Border>
+                    </StackPanel>
+                </Border>
 
-                    <!-- Buttons -->
-                    <Grid Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="8" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <ui:Button Grid.Column="0" Content="Start" Appearance="Primary" Command="{Binding StartCommand}" HorizontalAlignment="Stretch" />
-                        <ui:Button Grid.Column="2" Content="Stop" Appearance="Danger" Command="{Binding StopCommand}" HorizontalAlignment="Stretch" />
-                    </Grid>
-                    <ui:Button Content="Mail Viewer" Icon="{ui:SymbolIcon Mail24}" Command="{Binding OpenViewerCommand}" HorizontalAlignment="Stretch" Appearance="Secondary" Margin="0,0,0,12" />
-                </StackPanel>
-            </ScrollViewer>
+                <!-- Results Stats -->
+                <Border Grid.Row="4" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="14,12,16,14">
+                    <StackPanel>
+                        <!-- Good -->
+                        <Grid Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Fill="#4CAF50" Width="8" Height="8" Margin="0,0,8,0" />
+                                <TextBlock Text="Good" FontSize="13" Foreground="#4CAF50" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Statistics.GoodMailsCount}" HorizontalAlignment="Right" FontSize="13" FontWeight="Bold" Foreground="#4CAF50" />
+                        </Grid>
+                        <!-- Found -->
+                        <Grid Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Fill="#00BCD4" Width="8" Height="8" Margin="0,0,8,0" />
+                                <TextBlock Text="Found" FontSize="13" Foreground="#00BCD4" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Statistics.FoundMailsCount}" HorizontalAlignment="Right" FontSize="13" FontWeight="Bold" Foreground="#00BCD4" />
+                        </Grid>
+                        <!-- Bad -->
+                        <Grid Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Fill="#F44336" Width="8" Height="8" Margin="0,0,8,0" />
+                                <TextBlock Text="Bad" FontSize="13" Foreground="#F44336" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Statistics.BadMailsCount}" HorizontalAlignment="Right" FontSize="13" FontWeight="Bold" Foreground="#F44336" />
+                        </Grid>
+                        <!-- 2FA -->
+                        <Grid Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Fill="#9C27B0" Width="8" Height="8" Margin="0,0,8,0" />
+                                <TextBlock Text="2FA" FontSize="13" Foreground="#9C27B0" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Statistics.TwoFactorMailsCount}" HorizontalAlignment="Right" FontSize="13" FontWeight="Bold" Foreground="#9C27B0" />
+                        </Grid>
+                        <!-- Blocked -->
+                        <Grid Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Fill="#FF9800" Width="8" Height="8" Margin="0,0,8,0" />
+                                <TextBlock Text="Blocked" FontSize="13" Foreground="#FF9800" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Statistics.BlockedMailsCount}" HorizontalAlignment="Right" FontSize="13" FontWeight="Bold" Foreground="#FF9800" />
+                        </Grid>
+                        <!-- Error -->
+                        <Grid Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Fill="#795548" Width="8" Height="8" Margin="0,0,8,0" />
+                                <TextBlock Text="Error" FontSize="13" Foreground="#795548" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Statistics.ErrorMailsCount}" HorizontalAlignment="Right" FontSize="13" FontWeight="Bold" Foreground="#795548" />
+                        </Grid>
+                        <!-- NoHost -->
+                        <Grid Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Fill="#607D8B" Width="8" Height="8" Margin="0,0,8,0" />
+                                <TextBlock Text="NoHost" FontSize="13" Foreground="#607D8B" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Statistics.NoHostMailsCount}" HorizontalAlignment="Right" FontSize="13" FontWeight="Bold" Foreground="#607D8B" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </Grid>
 
-            <!-- Right: Log Area -->
-            <Border Grid.Column="1" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="12">
+            <!-- ═══════════ CENTER COLUMN (Output Log) ═══════════ -->
+            <Border Grid.Column="2" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="12">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <ui:TextBlock Grid.Row="0" Text="Output" FontTypography="Subtitle" Margin="0,0,0,8" />
+
+                    <TextBlock Grid.Row="0" Text="Output" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+
                     <TextBox Grid.Row="1" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
-                             FontFamily="Consolas" FontSize="12"
-                             Background="Transparent" BorderThickness="0"
+                             FontFamily="Consolas" FontSize="12" Background="Transparent" BorderThickness="0"
                              TextWrapping="Wrap" AcceptsReturn="True"
-                             Text="{Binding StatusText, Mode=OneWay}" />
+                             Text="{Binding StatusText, Mode=OneWay}"
+                             Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+
+                    <!-- Progress Bar -->
+                    <ProgressBar Grid.Row="2" Value="{Binding Progress}" Maximum="100" Height="4" Margin="0,8,0,0" />
                 </Grid>
             </Border>
-        </Grid>
 
-        <!-- Status Bar -->
-        <Border Grid.Row="2" Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" Padding="16,8">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="300" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding StatusText}" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                <ProgressBar Grid.Column="1" Value="{Binding Progress}" Maximum="100" Height="6" VerticalAlignment="Center" />
-            </Grid>
-        </Border>
+            <!-- ═══════════ RIGHT COLUMN (Settings + Tools) ═══════════ -->
+            <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+
+                    <!-- DB / Servers -->
+                    <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="14" Margin="0,0,0,8">
+                        <StackPanel>
+                            <TextBlock Text="Servers" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8" />
+                            <Button Command="{Binding LoadServersCommand}" HorizontalAlignment="Stretch"
+                                    Background="{DynamicResource ControlFillColorDefaultBrush}" BorderThickness="0" Padding="0,10" Margin="0,0,0,4">
+                                <TextBlock Text="Load Servers (.db)" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}" HorizontalAlignment="Center" />
+                            </Button>
+                            <Grid>
+                                <TextBlock Text="IMAP:" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="{Binding ServersLoaded}" HorizontalAlignment="Right" FontSize="12" FontWeight="Bold" Foreground="#00FFB2" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Settings -->
+                    <Expander Header="⚙ Settings" IsExpanded="False" Margin="0,0,0,8">
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="14">
+                            <StackPanel>
+                                <TextBlock Text="Threads" FontSize="12" Margin="0,0,0,4" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <ui:NumberBox Value="{Binding ThreadCount}" Minimum="1" Maximum="5000" Margin="0,0,0,10" />
+
+                                <Grid Margin="0,0,0,6">
+                                    <TextBlock Text="Use Proxies" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    <CheckBox IsChecked="{Binding UseProxy}" HorizontalAlignment="Right" />
+                                </Grid>
+                                <TextBlock Text="Proxy Type" FontSize="12" Margin="0,0,0,4" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <ComboBox SelectedIndex="{Binding SelectedProxyTypeIndex}" Margin="0,0,0,10">
+                                    <ComboBoxItem Content="HTTP" />
+                                    <ComboBoxItem Content="SOCKS4" />
+                                    <ComboBoxItem Content="SOCKS5" />
+                                </ComboBox>
+                            </StackPanel>
+                        </Border>
+                    </Expander>
+
+                    <!-- Keyword Search -->
+                    <Expander Header="🔍 Keyword Search" IsExpanded="False" Margin="0,0,0,8">
+                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="14">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <TextBlock Text="Enable (IMAP only)" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    <CheckBox IsChecked="{Binding KeywordEnabled}" HorizontalAlignment="Right" />
+                                </Grid>
+                                <TextBlock Text="Sender" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,2" />
+                                <ui:TextBox Text="{Binding KeywordSender, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="paypal, amazon" Margin="0,0,0,6" />
+                                <TextBlock Text="Subject" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,2" />
+                                <ui:TextBox Text="{Binding KeywordSubject, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="receipt, order" Margin="0,0,0,6" />
+                                <TextBlock Text="Body" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,2" />
+                                <ui:TextBox Text="{Binding KeywordBody, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="subscription" />
+                            </StackPanel>
+                        </Border>
+                    </Expander>
+
+                    <!-- Tools -->
+                    <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="14" Margin="0,0,0,8">
+                        <StackPanel>
+                            <TextBlock Text="Tools" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8" />
+                            <Button Command="{Binding OpenViewerCommand}" HorizontalAlignment="Stretch"
+                                    Background="{DynamicResource ControlFillColorDefaultBrush}" BorderThickness="0" Padding="0,10">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="📧" FontSize="14" Margin="0,0,6,0" />
+                                    <TextBlock Text="Mail Viewer" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
     </Grid>
 </ui:FluentWindow>
