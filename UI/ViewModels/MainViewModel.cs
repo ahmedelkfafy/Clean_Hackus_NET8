@@ -22,8 +22,8 @@ public class MainViewModel : BindableObject
 
     public MainViewModel()
     {
-        StartCommand = new RelayCommand(_ => StartChecker(), _ => Threads.State == Models.Enums.CheckerState.Stopped);
-        StopCommand = new RelayCommand(_ => StopChecker(), _ => Threads.State == Models.Enums.CheckerState.Running);
+        StartCommand = new RelayCommand(_ => StartChecker(), _ => Threads.State == Clean_Hackus_NET8.Models.Enums.CheckerState.Stopped);
+        StopCommand = new RelayCommand(_ => StopChecker(), _ => Threads.State == Clean_Hackus_NET8.Models.Enums.CheckerState.Running);
     }
 
     private async void StartChecker()

@@ -37,7 +37,7 @@ public class Pop3Client : IMailHandler
 
             _stream = _tcpClient.GetStream();
 
-            if (_server.Socket == SocketType.SSL)
+            if (_server.Socket == Models.Enums.SocketType.SSL)
             {
                 var sslStream = new SslStream(_stream, false, (sender, cert, chain, err) => true);
                 await sslStream.AuthenticateAsClientAsync(_server.Hostname);
