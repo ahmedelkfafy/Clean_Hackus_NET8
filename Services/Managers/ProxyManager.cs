@@ -16,11 +16,19 @@ public class ProxyManager
     private List<Proxy> _proxies = [];
     private int _currentIndex = 0;
 
+    /// <summary>Whether to use proxies for connections.</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>Default proxy type when loading from file.</summary>
+    public ProxyType DefaultType { get; set; } = ProxyType.HTTP;
+
     private ProxyManager() { }
 
-    /// <summary>Round-robin proxy rotation (thread-safe).</summary>
+    /// <summary>Round-robin proxy rotation (thread-safe). Returns null if proxies disabled or empty.</summary>
     public Proxy? GetNextProxy()
     {
+        if (!Enabled) return null;
+
         lock (_locker)
         {
             if (_proxies.Count == 0) return null;
@@ -29,9 +37,9 @@ public class ProxyManager
         }
     }
 
-    /// <summary>Random proxy selection.</summary>
     public Proxy? GetProxy()
     {
+        if (!Enabled) return null;
         lock (_locker)
         {
             if (_proxies.Count == 0) return null;
@@ -39,7 +47,10 @@ public class ProxyManager
         }
     }
 
-    /// <summary>Load proxies from a file. Supports host:port and host:port:user:pass formats.</summary>
+    /// <summary>
+    /// Load proxies from file. Supports formats:
+    /// host:port | host:port:user:pass | type://host:port | type://host:port:user:pass
+    /// </summary>
     public int LoadFromFile(string filePath)
     {
         var lines = File.ReadAllLines(filePath);
@@ -50,20 +61,9 @@ public class ProxyManager
             var line = rawLine.Trim();
             if (string.IsNullOrEmpty(line)) continue;
 
-            var parts = line.Split(':');
-            if (parts.Length < 2) continue;
-
-            var host = parts[0].Trim();
-            if (!int.TryParse(parts[1].Trim(), out int port)) continue;
-
-            var proxy = new Proxy(host, port);
-
-            if (parts.Length >= 4)
-            {
-                proxy = new Proxy(host, port, parts[2].Trim(), parts[3].Trim());
-            }
-
-            parsed.Add(proxy);
+            var proxy = ParseProxyLine(line);
+            if (proxy != null)
+                parsed.Add(proxy);
         }
 
         lock (_locker)
@@ -74,6 +74,44 @@ public class ProxyManager
         }
 
         return parsed.Count;
+    }
+
+    private Proxy? ParseProxyLine(string line)
+    {
+        var type = DefaultType;
+
+        // Check for type:// prefix
+        if (line.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            type = ProxyType.HTTP;
+            line = line[7..];
+        }
+        else if (line.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            type = ProxyType.HTTP;
+            line = line[8..];
+        }
+        else if (line.StartsWith("socks4://", StringComparison.OrdinalIgnoreCase))
+        {
+            type = ProxyType.SOCKS4;
+            line = line[9..];
+        }
+        else if (line.StartsWith("socks5://", StringComparison.OrdinalIgnoreCase))
+        {
+            type = ProxyType.SOCKS5;
+            line = line[9..];
+        }
+
+        var parts = line.Split(':');
+        if (parts.Length < 2) return null;
+
+        var host = parts[0].Trim();
+        if (!int.TryParse(parts[1].Trim(), out int port)) return null;
+
+        if (parts.Length >= 4)
+            return new Proxy(host, port, parts[2].Trim(), parts[3].Trim(), type);
+
+        return new Proxy(host, port, type);
     }
 
     public void UploadProxies(IEnumerable<Proxy> proxies)
