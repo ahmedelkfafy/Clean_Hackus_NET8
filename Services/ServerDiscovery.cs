@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -286,7 +285,7 @@ public class ServerDiscovery
     {
         try
         {
-            using var tcp = new TcpClient();
+            using var tcp = new System.Net.Sockets.TcpClient();
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(3000);
             await tcp.ConnectAsync(hostname, port, cts.Token);
