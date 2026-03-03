@@ -1,0 +1,32 @@
+<UserControl x:Class="Clean_Hackus_NET8.Components.Tools.Views.NormalizeToolView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <ui:TextBlock Text="Normalize List" FontTypography="Title" />
+            <ui:TextBlock Text="Removes invalid lines and normalizes email:password formats." 
+                          Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+
+        <TextBox Grid.Row="1" AcceptsReturn="True" TextWrapping="NoWrap" 
+                 Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}" 
+                 FontFamily="Consolas" FontSize="14" />
+
+        <Grid Grid.Row="2" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center" 
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            <ui:Button Grid.Column="1" Content="Normalize" Appearance="Primary" Command="{Binding ProcessCommand}" />
+        </Grid>
+    </Grid>
+</UserControl>
