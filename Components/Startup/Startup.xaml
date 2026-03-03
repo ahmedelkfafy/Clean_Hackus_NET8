@@ -17,21 +17,16 @@
             </Grid.RowDefinitions>
             
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,24">
-                <ui:SymbolIcon Symbol="ShieldIcon24" FontSize="64" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                <TextBlock Text="Authentication required" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                <ui:SymbolIcon Symbol="Shield24" FontSize="64" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                <TextBlock Text="Authentication required" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,12,0,0" />
 
-                <StackPanel Width="300" Margin="0,0,0,16">
-                    <Grid>
-                        <ui:TextBox PlaceholderText="Username" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" />
-                    </Grid>
-                    <Grid>
-                        <ui:PasswordBox PlaceholderText="Password" Password="{Binding Password, UpdateSourceTrigger=PropertyChanged}" />
-                    </Grid>
-
-                    <ui:Button Content="Authenticate" Appearance="Primary" Command="{Binding LoginCommand}" HorizontalAlignment="Stretch" Margin="0,8,0,0"/>
+                <StackPanel Width="300" Margin="0,24,0,0">
+                    <ui:TextBox PlaceholderText="Username" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12" />
+                    <PasswordBox x:Name="PasswordField" Margin="0,0,0,12" />
+                    <ui:Button Content="Authenticate" Appearance="Primary" Command="{Binding LoginCommand}" HorizontalAlignment="Stretch" />
                 </StackPanel>
                 
-                <TextBlock Text="{Binding ErrorMessage}" Foreground="#F44336" HorizontalAlignment="Center"
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="#F44336" HorizontalAlignment="Center" Margin="0,12,0,0"
                            Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}" />
             </StackPanel>
 

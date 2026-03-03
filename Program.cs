@@ -1,12 +1,3 @@
-using System;
-using System.Threading.Tasks;
-
-namespace Clean_Hackus_NET8;
-
-class Program
-{
-    static async Task Main(string[] args)
-    {
-        Console.WriteLine("Clean Hackus .NET 8 Migration");
-    }
-}
+// This file is intentionally left empty.
+// The WPF entry point is auto-generated from App.xaml.
+// See App.cs for the Startup event handler.
