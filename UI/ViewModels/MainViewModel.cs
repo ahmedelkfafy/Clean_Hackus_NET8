@@ -243,7 +243,7 @@ public class MainViewModel : BindableObject
 
     // ─── Start ────────────────────────────────────────────────────────
 
-    private async void ExecuteStart()
+    private void ExecuteStart()
     {
         if (_comboQueue == null || _comboQueue.IsEmpty)
         {
@@ -255,7 +255,6 @@ public class MainViewModel : BindableObject
         Progress = 0;
         StatusText = $"Running... {ThreadCount} threads | {(KeywordEnabled ? "IMAP+Keyword" : "POP3→IMAP")}";
 
-        var engine = new CheckerEngine();
         var progressTimer = new System.Timers.Timer(500);
         progressTimer.Elapsed += (_, _) =>
         {
@@ -264,42 +263,36 @@ public class MainViewModel : BindableObject
         };
         progressTimer.Start();
 
-        try
+        // When all threads finish
+        Threads.OnAllThreadsFinished += () =>
         {
-            // SemaphoreSlim for proper concurrency control — NOT raw Task.Run per thread
-            using var semaphore = new SemaphoreSlim(ThreadCount, ThreadCount);
-
-            await Threads.RunAsync(async token =>
+            progressTimer.Stop();
+            Progress = 100;
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
             {
-                var tasks = new System.Collections.Generic.List<Task>();
+                StatusText = $"Done! Good:{Statistics.GoodMailsCount} Bad:{Statistics.BadMailsCount} Error:{Statistics.ErrorMailsCount} NoHost:{Statistics.NoHostMailsCount}";
+            });
+        };
 
-                while (_comboQueue.TryDequeue(out var mailbox))
+        // N real threads, each runs this synchronous worker
+        int threadCount = Math.Min(ThreadCount, _totalCombo);
+        Threads.Start(() =>
+        {
+            var engine = new CheckerEngine();
+
+            while (!Threads.StopRequested && _comboQueue.TryDequeue(out var mailbox))
+            {
+                Threads.WaitPause(); // honor Pause
+
+                try
                 {
-                    token.ThrowIfCancellationRequested();
-
-                    await semaphore.WaitAsync(token);
-                    var task = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await engine.CheckMailboxAsync(mailbox, token);
-                        }
-                        catch (OperationCanceledException) { }
-                        catch { Statistics.IncrementError(); }
-                        finally { semaphore.Release(); }
-                    }, token);
-
-                    tasks.Add(task);
+                    // Run async MailKit calls synchronously inside this thread
+                    engine.CheckMailboxAsync(mailbox, CancellationToken.None).GetAwaiter().GetResult();
                 }
-
-                await Task.WhenAll(tasks);
-            }, ThreadCount);
-        }
-        catch { }
-
-        progressTimer.Stop();
-        Progress = 100;
-        StatusText = $"Done! Good:{Statistics.GoodMailsCount} Bad:{Statistics.BadMailsCount} Error:{Statistics.ErrorMailsCount} NoHost:{Statistics.NoHostMailsCount}";
+                catch (ThreadInterruptedException) { break; }
+                catch { Statistics.IncrementError(); }
+            }
+        }, threadCount);
     }
 
     // ─── Stop ─────────────────────────────────────────────────────────

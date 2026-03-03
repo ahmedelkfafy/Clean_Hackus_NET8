@@ -36,14 +36,14 @@ public class ViewerViewModel : BindableObject
     public Mailbox? SelectedAccount
     {
         get => _selectedAccount;
-        set { _selectedAccount = value; OnPropertyChanged(); if (value != null) _ = LoadFoldersAsync(value); }
+        set { _selectedAccount = value; OnPropertyChanged(); if (value != null) Task.Run(() => LoadFoldersAsync(value)); }
     }
 
     private string? _selectedFolder;
     public string? SelectedFolder
     {
         get => _selectedFolder;
-        set { _selectedFolder = value; OnPropertyChanged(); if (value != null && _selectedAccount != null) _ = LoadMessagesAsync(_selectedAccount, value); }
+        set { _selectedFolder = value; OnPropertyChanged(); if (value != null && _selectedAccount != null) Task.Run(() => LoadMessagesAsync(_selectedAccount, value)); }
     }
 
     private EmailMessage? _selectedMessage;
@@ -87,7 +87,7 @@ public class ViewerViewModel : BindableObject
     {
         _webView = webView;
         LoadHitsCommand = new RelayCommand(_ => ExecuteLoadHits());
-        SearchCommand = new RelayCommand(_ => _ = ExecuteSearchAsync());
+        SearchCommand = new RelayCommand(_ => Task.Run(() => ExecuteSearchAsync()));
         _ = InitWebViewAsync();
     }
 
@@ -96,7 +96,7 @@ public class ViewerViewModel : BindableObject
         try
         {
             await _webView.EnsureCoreWebView2Async();
-            _webView.CoreWebView2.NavigateToString("<html><body style='background:#1e1e2e;color:#cdd6f4;font-family:Segoe UI;padding:24px'><p>Paste <b>email:password</b> above to connect, or load from Good.txt.</p></body></html>");
+            _webView.CoreWebView2.NavigateToString(WrapHtml("<h2 style='color:#64FFDA'>Mail Viewer</h2><p>Paste <b>email:password</b> above to auto-connect, or press <b>Load Hits</b>.</p>"));
         }
         catch { }
     }
@@ -131,7 +131,6 @@ public class ViewerViewModel : BindableObject
             Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*",
             Title = "Load Good/Hits File"
         };
-
         if (dialog.ShowDialog() != true) return;
 
         Accounts.Clear();
@@ -156,76 +155,73 @@ public class ViewerViewModel : BindableObject
     {
         Dispatch(() => { Folders.Clear(); Messages.Clear(); StatusText = $"Connecting to {mailbox.Address}..."; });
 
-        // Try IMAP
         foreach (var server in GetImapServers(mailbox.Domain))
         {
+            Net.Mail.ImapClient? client = null;
             try
             {
-                using var client = new Net.Mail.ImapClient(mailbox, server);
-                var connectResult = await client.ConnectAsync(null);
-                if (connectResult != OperationResult.Ok) continue;
+                client = new Net.Mail.ImapClient(mailbox, server);
+                if (await client.ConnectAsync(null) != OperationResult.Ok) continue;
 
-                var loginResult = await client.LoginAsync();
-                if (loginResult == OperationResult.Bad)
+                var login = await client.LoginAsync();
+                if (login == OperationResult.Bad)
                 {
-                    Dispatch(() => StatusText = $"❌ Wrong password for {mailbox.Address} via {server.Hostname}");
-                    await client.DisconnectAsync();
+                    Dispatch(() => StatusText = $"❌ Wrong password: {mailbox.Address}");
                     return;
                 }
-                if (loginResult != OperationResult.Ok) { await client.DisconnectAsync(); continue; }
+                if (login != OperationResult.Ok) continue;
 
                 var folderList = await client.ListFoldersAsync();
                 Dispatch(() =>
                 {
                     foreach (var f in folderList) Folders.Add(f);
-                    StatusText = $"✅ Connected via IMAP ({server.Hostname}) — {folderList.Count} folders";
+                    StatusText = $"✅ IMAP {server.Hostname} — {folderList.Count} folders";
                 });
-
                 await client.DisconnectAsync();
                 return;
             }
             catch { }
+            finally { client?.Dispose(); }
         }
 
-        // Fallback: POP3
+        // POP3 fallback
         foreach (var server in GetPop3Servers(mailbox.Domain))
         {
+            Net.Mail.Pop3Client? client = null;
             try
             {
-                using var client = new Net.Mail.Pop3Client(mailbox, server);
-                var connectResult = await client.ConnectAsync(null);
-                if (connectResult != OperationResult.Ok) continue;
+                client = new Net.Mail.Pop3Client(mailbox, server);
+                if (await client.ConnectAsync(null) != OperationResult.Ok) continue;
 
-                var loginResult = await client.LoginAsync();
-                if (loginResult == OperationResult.Bad)
+                var login = await client.LoginAsync();
+                if (login == OperationResult.Bad)
                 {
-                    Dispatch(() => StatusText = $"❌ Wrong password for {mailbox.Address} via POP3 {server.Hostname}");
-                    await client.DisconnectAsync();
+                    Dispatch(() => StatusText = $"❌ Wrong password: {mailbox.Address}");
                     return;
                 }
-                if (loginResult != OperationResult.Ok) { await client.DisconnectAsync(); continue; }
+                if (login != OperationResult.Ok) continue;
 
                 var count = client.GetMessageCount();
                 Dispatch(() =>
                 {
-                    Folders.Add($"Inbox (POP3 — {count} msgs)");
-                    StatusText = $"✅ Connected via POP3 ({server.Hostname}) — {count} messages";
+                    Folders.Add($"Inbox (POP3 — {count})");
+                    StatusText = $"✅ POP3 {server.Hostname} — {count} messages";
                 });
-
                 await client.DisconnectAsync();
                 return;
             }
             catch { }
+            finally { client?.Dispose(); }
         }
 
-        Dispatch(() => StatusText = $"❌ Failed to connect to {mailbox.Address}");
+        Dispatch(() => StatusText = $"❌ Cannot connect to {mailbox.Address}");
     }
 
     // ─── Load Messages ────────────────────────────────────────────────
 
     private async Task LoadMessagesAsync(Mailbox mailbox, string folderName)
     {
-        Dispatch(() => { Messages.Clear(); StatusText = $"Loading messages from {folderName}..."; });
+        Dispatch(() => { Messages.Clear(); StatusText = $"Loading {folderName}..."; });
 
         if (folderName.Contains("POP3"))
         {
@@ -233,27 +229,25 @@ public class ViewerViewModel : BindableObject
             return;
         }
 
-        // IMAP
         foreach (var server in GetImapServers(mailbox.Domain))
         {
+            Net.Mail.ImapClient? client = null;
             try
             {
-                using var client = new Net.Mail.ImapClient(mailbox, server);
+                client = new Net.Mail.ImapClient(mailbox, server);
                 if (await client.ConnectAsync(null) != OperationResult.Ok) continue;
-                if (await client.LoginAsync() != OperationResult.Ok) { await client.DisconnectAsync(); continue; }
-                if (await client.SelectFolderAsync(new Folder { Name = folderName }) != OperationResult.Ok)
-                {
-                    await client.DisconnectAsync();
-                    continue;
-                }
+                if (await client.LoginAsync() != OperationResult.Ok) continue;
+                if (await client.SelectFolderAsync(new Folder { Name = folderName }) != OperationResult.Ok) continue;
 
                 var uids = await client.SearchAsync("ALL");
-                var lastUids = uids.Count > 20 ? uids.Skip(uids.Count - 20).ToList() : uids;
+                var last20 = uids.Count > 20 ? uids.Skip(uids.Count - 20).ToList() : uids;
 
-                foreach (var uid in lastUids.AsEnumerable().Reverse())
+                foreach (var uid in last20.AsEnumerable().Reverse())
                 {
                     var (subject, from, date, body) = await client.FetchMessageAsync(uid);
-                    var isHtml = body.TrimStart().StartsWith("<", StringComparison.OrdinalIgnoreCase);
+                    if (string.IsNullOrEmpty(subject) && string.IsNullOrEmpty(body)) continue;
+
+                    var isHtml = !string.IsNullOrEmpty(body) && body.TrimStart().StartsWith("<", StringComparison.OrdinalIgnoreCase);
                     Dispatch(() => Messages.Add(new EmailMessage
                     {
                         Subject = string.IsNullOrEmpty(subject) ? "(No Subject)" : subject,
@@ -261,11 +255,12 @@ public class ViewerViewModel : BindableObject
                     }));
                 }
 
-                Dispatch(() => StatusText = $"✅ Loaded {Messages.Count} messages from {folderName}");
+                Dispatch(() => StatusText = $"✅ {Messages.Count} messages from {folderName}");
                 await client.DisconnectAsync();
                 return;
             }
             catch { }
+            finally { client?.Dispose(); }
         }
 
         Dispatch(() => StatusText = "❌ Failed to load messages");
@@ -275,20 +270,20 @@ public class ViewerViewModel : BindableObject
     {
         foreach (var server in GetPop3Servers(mailbox.Domain))
         {
+            Net.Mail.Pop3Client? client = null;
             try
             {
-                using var client = new Net.Mail.Pop3Client(mailbox, server);
+                client = new Net.Mail.Pop3Client(mailbox, server);
                 if (await client.ConnectAsync(null) != OperationResult.Ok) continue;
-                if (await client.LoginAsync() != OperationResult.Ok) { await client.DisconnectAsync(); continue; }
+                if (await client.LoginAsync() != OperationResult.Ok) continue;
 
                 var count = client.GetMessageCount();
-                var startFrom = Math.Max(0, count - 10);
-
-                for (int i = count - 1; i >= startFrom; i--)
+                for (int i = count - 1; i >= Math.Max(0, count - 10); i--)
                 {
                     var (subject, from, date, body) = await client.GetMessageAsync(i);
                     if (string.IsNullOrEmpty(subject) && string.IsNullOrEmpty(body)) continue;
-                    var isHtml = body.TrimStart().StartsWith("<", StringComparison.OrdinalIgnoreCase);
+
+                    var isHtml = !string.IsNullOrEmpty(body) && body.TrimStart().StartsWith("<", StringComparison.OrdinalIgnoreCase);
                     Dispatch(() => Messages.Add(new EmailMessage
                     {
                         Subject = string.IsNullOrEmpty(subject) ? "(No Subject)" : subject,
@@ -296,45 +291,57 @@ public class ViewerViewModel : BindableObject
                     }));
                 }
 
-                Dispatch(() => StatusText = $"✅ Loaded {Messages.Count} messages via POP3");
+                Dispatch(() => StatusText = $"✅ {Messages.Count} messages via POP3");
                 await client.DisconnectAsync();
                 return;
             }
             catch { }
+            finally { client?.Dispose(); }
         }
 
-        Dispatch(() => StatusText = "❌ Failed to load messages via POP3");
+        Dispatch(() => StatusText = "❌ Failed via POP3");
     }
 
-    // ─── Search ───────────────────────────────────────────────────────
+    // ─── Search (IMAP SEARCH) ─────────────────────────────────────────
 
     private async Task ExecuteSearchAsync()
     {
         if (_selectedAccount == null || string.IsNullOrWhiteSpace(SearchQuery)) return;
 
-        Dispatch(() => { Messages.Clear(); StatusText = $"Searching for '{SearchQuery}'..."; });
+        Dispatch(() => { Messages.Clear(); StatusText = $"Searching '{SearchQuery}'..."; });
 
         foreach (var server in GetImapServers(_selectedAccount.Domain))
         {
+            Net.Mail.ImapClient? client = null;
             try
             {
-                using var client = new Net.Mail.ImapClient(_selectedAccount, server);
+                client = new Net.Mail.ImapClient(_selectedAccount, server);
                 if (await client.ConnectAsync(null) != OperationResult.Ok) continue;
-                if (await client.LoginAsync() != OperationResult.Ok) { await client.DisconnectAsync(); continue; }
-                if (await client.SelectFolderAsync(new Folder { Name = _selectedFolder ?? "INBOX" }) != OperationResult.Ok)
+                if (await client.LoginAsync() != OperationResult.Ok) continue;
+
+                // Search in selected folder or INBOX
+                var folder = _selectedFolder ?? "INBOX";
+                if (await client.SelectFolderAsync(new Folder { Name = folder }) != OperationResult.Ok) continue;
+
+                // Build OR query: subject OR from OR body
+                var q = SearchQuery;
+                var criteria = $"SUBJECT \"{q}\" OR FROM \"{q}\" OR BODY \"{q}\"";
+                var uids = await client.SearchAsync(criteria);
+
+                if (uids.Count == 0)
                 {
-                    await client.DisconnectAsync();
-                    continue;
+                    // Try simpler search
+                    uids = await client.SearchAsync($"SUBJECT \"{q}\"");
                 }
 
-                var criteria = $"OR SUBJECT \"{SearchQuery}\" OR FROM \"{SearchQuery}\" BODY \"{SearchQuery}\"";
-                var uids = await client.SearchAsync(criteria);
-                var lastUids = uids.Count > 30 ? uids.Skip(uids.Count - 30).ToList() : uids;
+                var last30 = uids.Count > 30 ? uids.Skip(uids.Count - 30).ToList() : uids;
 
-                foreach (var uid in lastUids.AsEnumerable().Reverse())
+                foreach (var uid in last30.AsEnumerable().Reverse())
                 {
                     var (subject, from, date, body) = await client.FetchMessageAsync(uid);
-                    var isHtml = body.TrimStart().StartsWith("<", StringComparison.OrdinalIgnoreCase);
+                    if (string.IsNullOrEmpty(subject) && string.IsNullOrEmpty(body)) continue;
+
+                    var isHtml = !string.IsNullOrEmpty(body) && body.TrimStart().StartsWith("<", StringComparison.OrdinalIgnoreCase);
                     Dispatch(() => Messages.Add(new EmailMessage
                     {
                         Subject = string.IsNullOrEmpty(subject) ? "(No Subject)" : subject,
@@ -342,38 +349,40 @@ public class ViewerViewModel : BindableObject
                     }));
                 }
 
-                Dispatch(() => StatusText = $"Found {Messages.Count} results for '{SearchQuery}'");
+                Dispatch(() => StatusText = $"🔍 Found {Messages.Count} results for '{SearchQuery}'");
                 await client.DisconnectAsync();
                 return;
             }
             catch { }
+            finally { client?.Dispose(); }
         }
 
         Dispatch(() => StatusText = "❌ Search failed");
     }
 
-    // ─── Display ──────────────────────────────────────────────────────
+    // ─── Display Message (pretty HTML in WebView2) ────────────────────
 
     private void DisplayMessage(EmailMessage message)
     {
         try
         {
-            var body = message.Body;
-            if (!message.IsHtml)
-                body = $"<pre style='white-space:pre-wrap;word-wrap:break-word'>{System.Net.WebUtility.HtmlEncode(body)}</pre>";
+            var bodyHtml = message.Body;
 
-            var html = "<html><head><style>"
-                + "body { background:#1e1e2e; color:#cdd6f4; font-family:'Segoe UI',sans-serif; padding:24px; }"
-                + "h2 { color:#89b4fa; margin-bottom:4px; }"
-                + ".meta { color:#6c7086; font-size:13px; margin-bottom:16px; }"
-                + "hr { border:1px solid #313244; }"
-                + "a { color:#89b4fa; } pre { color:#cdd6f4; }"
-                + "</style></head><body>"
-                + $"<h2>{System.Net.WebUtility.HtmlEncode(message.Subject)}</h2>"
-                + $"<div class='meta'>From: {System.Net.WebUtility.HtmlEncode(message.From)} &bull; {System.Net.WebUtility.HtmlEncode(message.Date)}</div>"
-                + "<hr/>"
-                + $"<div>{body}</div>"
-                + "</body></html>";
+            if (!message.IsHtml)
+            {
+                // Plain text → formatted HTML
+                bodyHtml = $"<div style='white-space:pre-wrap;word-wrap:break-word;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#cdd6f4'>{System.Net.WebUtility.HtmlEncode(bodyHtml)}</div>";
+            }
+
+            var html = WrapHtml(
+                $"<div style='margin-bottom:16px'>"
+                + $"<div style='font-size:18px;font-weight:bold;color:#89b4fa;margin-bottom:4px'>{System.Net.WebUtility.HtmlEncode(message.Subject)}</div>"
+                + $"<div style='font-size:12px;color:#6c7086'>From: {System.Net.WebUtility.HtmlEncode(message.From)}</div>"
+                + $"<div style='font-size:12px;color:#6c7086;margin-bottom:12px'>Date: {System.Net.WebUtility.HtmlEncode(message.Date)}</div>"
+                + $"<hr style='border:1px solid #313244;margin-bottom:16px'/>"
+                + $"</div>"
+                + bodyHtml
+            );
 
             _webView.Dispatcher.Invoke(() => _webView.CoreWebView2?.NavigateToString(html));
         }
@@ -381,6 +390,12 @@ public class ViewerViewModel : BindableObject
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────
+
+    private static string WrapHtml(string content) =>
+        "<html><head><meta charset='utf-8'/><style>"
+        + "body { background:#1e1e2e; color:#cdd6f4; font-family:'Segoe UI',sans-serif; padding:20px; margin:0; }"
+        + "a { color:#89b4fa; } img { max-width:100%; } table { border-collapse:collapse; } td,th { padding:4px 8px; border:1px solid #45475a; }"
+        + "</style></head><body>" + content + "</body></html>";
 
     private static void Dispatch(Action action)
     {
