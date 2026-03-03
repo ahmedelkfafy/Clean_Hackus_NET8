@@ -116,16 +116,18 @@ public class MainViewModel : BindableObject
 
         if (dialog.ShowDialog() == true)
         {
-            var count = ServerDatabase.Instance.LoadImapDatabase(dialog.FileName);
-
-            // Initialize POP3 cache alongside the IMAP db
-            var pop3CachePath = Path.Combine(
-                Path.GetDirectoryName(dialog.FileName) ?? AppDomain.CurrentDomain.BaseDirectory,
-                "pop3_cache.db");
-            ServerDatabase.Instance.InitPop3Cache(pop3CachePath);
-
-            ServersLoaded = count;
-            StatusText = $"Loaded {count:N0} IMAP servers. POP3 will auto-discover.";
+            try
+            {
+                var count = ServerDatabase.Instance.LoadImapDatabase(dialog.FileName);
+                ServersLoaded = count;
+                StatusText = $"Loaded {count:N0} IMAP servers from {Path.GetFileName(dialog.FileName)}.";
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Error loading DB:\n{ex.Message}", "Error",
+                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                StatusText = "Failed to load server database.";
+            }
         }
     }
 

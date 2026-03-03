@@ -17,6 +17,10 @@ public partial class App : Application
         DataFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
         Directory.CreateDirectory(DataFolder);
 
+        // Init POP3 cache in Data folder
+        var pop3CachePath = Path.Combine(DataFolder, "pop3_cache.db");
+        ServerDatabase.Instance.InitPop3Cache(pop3CachePath);
+
         // Auto-load all .db files from Data folder (IMAP servers)
         var dbFiles = Directory.GetFiles(DataFolder, "*.db")
             .Where(f => !Path.GetFileName(f).Equals("pop3_cache.db", StringComparison.OrdinalIgnoreCase))
@@ -25,16 +29,21 @@ public partial class App : Application
         int totalServers = 0;
         foreach (var dbFile in dbFiles)
         {
-            try
-            {
-                totalServers += ServerDatabase.Instance.LoadImapDatabase(dbFile);
-            }
-            catch { }
+            totalServers += ServerDatabase.Instance.LoadImapDatabase(dbFile);
         }
 
-        // Init POP3 cache in the same Data folder
-        var pop3CachePath = Path.Combine(DataFolder, "pop3_cache.db");
-        ServerDatabase.Instance.InitPop3Cache(pop3CachePath);
+        if (dbFiles.Length > 0 && totalServers > 0)
+        {
+            MessageBox.Show(
+                $"Auto-loaded {totalServers} IMAP servers from {dbFiles.Length} file(s) in Data folder.",
+                "Servers Loaded", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        else if (dbFiles.Length > 0 && totalServers == 0)
+        {
+            MessageBox.Show(
+                $"Found {dbFiles.Length} .db file(s) in Data folder but loaded 0 servers.\nCheck the DB schema.",
+                "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
 
         var startupWindow = new Components.Startup.Startup();
         startupWindow.Show();
