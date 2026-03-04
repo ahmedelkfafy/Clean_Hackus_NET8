@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using ProtocolType = Clean_Hackus_NET8.Models.Enums.ProtocolType;
 using System.Threading;
 using Clean_Hackus_NET8.Models;
 using Clean_Hackus_NET8.Models.Enums;
