@@ -107,9 +107,9 @@ public class Pop3Client : IMailHandler
 
     // ─── Async wrappers (IMailHandler) ────────────────────────────────
 
-    public Task<OperationResult> ConnectAsync(Server server, CancellationToken ct = default) => Task.FromResult(Connect());
+    public Task<OperationResult> ConnectAsync(Proxy? proxy, CancellationToken ct = default) => Task.FromResult(Connect());
     public Task<OperationResult> LoginAsync(CancellationToken ct = default) => Task.FromResult(Login());
-    public Task<OperationResult> SelectFolderAsync(string folderName, CancellationToken ct = default) => Task.FromResult(OperationResult.Ok);
+    public Task<OperationResult> SelectFolderAsync(Folder folder, CancellationToken ct = default) => Task.FromResult(OperationResult.Ok);
     public Task SearchMessagesAsync(CancellationToken ct = default) => Task.CompletedTask;
     public Task DisconnectAsync(CancellationToken ct = default) { Disconnect(); return Task.CompletedTask; }
 }

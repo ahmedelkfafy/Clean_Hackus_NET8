@@ -14,10 +14,10 @@ public interface IMailHandler : IDisposable
     OperationResult Login();
     void Disconnect();
 
-    // Async methods used by MailHandler (extra params from MailHandler.cs on build machine)
-    Task<OperationResult> ConnectAsync(Server server, CancellationToken ct = default);
+    // Async methods used by MailHandler
+    Task<OperationResult> ConnectAsync(Proxy? proxy, CancellationToken ct = default);
     Task<OperationResult> LoginAsync(CancellationToken ct = default);
-    Task<OperationResult> SelectFolderAsync(string folderName, CancellationToken ct = default);
+    Task<OperationResult> SelectFolderAsync(Folder folder, CancellationToken ct = default);
     Task SearchMessagesAsync(CancellationToken ct = default);
     Task DisconnectAsync(CancellationToken ct = default);
 }
