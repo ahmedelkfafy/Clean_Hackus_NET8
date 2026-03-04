@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using Clean_Hackus_NET8.Models;
 using Clean_Hackus_NET8.Models.Enums;
 
 namespace Clean_Hackus_NET8.Net.Mail;
