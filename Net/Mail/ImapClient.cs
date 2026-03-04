@@ -19,7 +19,7 @@ namespace Clean_Hackus_NET8.Net.Mail;
 /// IMAP client — MailKit SYNC API only.
 /// Matches old Hackus patterns: Blocked detection, HostNotFound, proper error classification.
 /// </summary>
-public class ImapClient : IDisposable
+public class ImapClient : IMailHandler
 {
     private readonly Mailbox _mailbox;
     private readonly Server _server;

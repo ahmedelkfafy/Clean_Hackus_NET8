@@ -14,7 +14,7 @@ namespace Clean_Hackus_NET8.Net.Mail;
 /// POP3 client — MailKit SYNC API only.
 /// Blocked detection, HostNotFound, proper error classification.
 /// </summary>
-public class Pop3Client : IDisposable
+public class Pop3Client : IMailHandler
 {
     private readonly Mailbox _mailbox;
     private readonly Server _server;
