@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net.Sockets;
 using Clean_Hackus_NET8.Models;
 using Clean_Hackus_NET8.Models.Enums;
+using SocketType = Clean_Hackus_NET8.Models.Enums.SocketType;
 using MailKit.Security;
 using MimeKit;
 
