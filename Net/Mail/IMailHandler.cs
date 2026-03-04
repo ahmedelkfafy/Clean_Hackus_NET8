@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Threading.Tasks;
 using Clean_Hackus_NET8.Models.Enums;
 
@@ -12,10 +13,10 @@ public interface IMailHandler : IDisposable
     OperationResult Login();
     void Disconnect();
 
-    // Async wrappers used by MailHandler
-    Task<OperationResult> ConnectAsync();
-    Task<OperationResult> LoginAsync();
-    Task<OperationResult> SelectFolderAsync(string folderName);
-    Task SearchMessagesAsync();
-    Task DisconnectAsync();
+    // Async methods used by MailHandler (extra params from MailHandler.cs on build machine)
+    Task<OperationResult> ConnectAsync(Server server, CancellationToken ct = default);
+    Task<OperationResult> LoginAsync(CancellationToken ct = default);
+    Task<OperationResult> SelectFolderAsync(string folderName, CancellationToken ct = default);
+    Task SearchMessagesAsync(CancellationToken ct = default);
+    Task DisconnectAsync(CancellationToken ct = default);
 }

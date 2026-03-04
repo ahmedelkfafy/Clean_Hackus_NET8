@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Sockets;
 using Clean_Hackus_NET8.Models;
@@ -106,9 +107,9 @@ public class Pop3Client : IMailHandler
 
     // ─── Async wrappers (IMailHandler) ────────────────────────────────
 
-    public Task<OperationResult> ConnectAsync() => Task.FromResult(Connect());
-    public Task<OperationResult> LoginAsync() => Task.FromResult(Login());
-    public Task<OperationResult> SelectFolderAsync(string folderName) => Task.FromResult(OperationResult.Ok);
-    public Task SearchMessagesAsync() => Task.CompletedTask;
-    public Task DisconnectAsync() { Disconnect(); return Task.CompletedTask; }
+    public Task<OperationResult> ConnectAsync(Server server, CancellationToken ct = default) => Task.FromResult(Connect());
+    public Task<OperationResult> LoginAsync(CancellationToken ct = default) => Task.FromResult(Login());
+    public Task<OperationResult> SelectFolderAsync(string folderName, CancellationToken ct = default) => Task.FromResult(OperationResult.Ok);
+    public Task SearchMessagesAsync(CancellationToken ct = default) => Task.CompletedTask;
+    public Task DisconnectAsync(CancellationToken ct = default) { Disconnect(); return Task.CompletedTask; }
 }

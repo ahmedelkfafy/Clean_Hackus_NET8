@@ -261,10 +261,10 @@ public class ImapClient : IMailHandler
 
     // ─── Async wrappers (IMailHandler) ────────────────────────────────
 
-    public Task<OperationResult> ConnectAsync() => Task.FromResult(Connect());
-    public Task<OperationResult> LoginAsync() => Task.FromResult(Login());
-    public Task<OperationResult> SelectFolderAsync(string folderName) => Task.FromResult(SelectFolder(folderName));
-    public Task SearchMessagesAsync()
+    public Task<OperationResult> ConnectAsync(Server server, CancellationToken ct = default) => Task.FromResult(Connect());
+    public Task<OperationResult> LoginAsync(CancellationToken ct = default) => Task.FromResult(Login());
+    public Task<OperationResult> SelectFolderAsync(string folderName, CancellationToken ct = default) => Task.FromResult(SelectFolder(folderName));
+    public Task SearchMessagesAsync(CancellationToken ct = default)
     {
         var kw = KeywordSettings.Instance;
         if (kw.Enabled && kw.HasKeywords)
@@ -274,5 +274,5 @@ public class ImapClient : IMailHandler
         }
         return Task.CompletedTask;
     }
-    public Task DisconnectAsync() { Disconnect(); return Task.CompletedTask; }
+    public Task DisconnectAsync(CancellationToken ct = default) { Disconnect(); return Task.CompletedTask; }
 }
