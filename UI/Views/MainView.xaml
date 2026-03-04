@@ -55,8 +55,8 @@
                     <StackPanel HorizontalAlignment="Center">
                         <!-- Circular Progress -->
                         <Grid Width="150" Height="150" Margin="0,4,0,8">
-                            <Ellipse Stroke="#313244" StrokeThickness="6" />
-                            <Ellipse Stroke="#00FFB2" StrokeThickness="6" StrokeDashArray="100" StrokeDashOffset="{Binding ProgressDash}" />
+                            <ui:ProgressRing Value="{Binding Progress}" Maximum="100" Width="140" Height="140"
+                                            IsIndeterminate="False" />
                             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                                 <TextBlock HorizontalAlignment="Center" FontSize="18" FontWeight="Bold" Foreground="#cdd6f4">
                                     <TextBlock.Text>
@@ -70,22 +70,34 @@
                             </StackPanel>
                         </Grid>
 
-                        <!-- Start / Stop buttons -->
+                        <!-- Start / Pause / Stop buttons -->
                         <Grid Margin="0,0,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="4" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="4" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Button Grid.Column="0" Command="{Binding StartCommand}" HorizontalAlignment="Stretch"
-                                    Background="#1a2e1a" BorderThickness="0" Padding="12,8">
-                                <TextBlock Text="START" FontSize="13" FontWeight="SemiBold" Foreground="#64FFD1" HorizontalAlignment="Center" />
+                                    Background="#1a2e1a" BorderThickness="0" Padding="8,8">
+                                <TextBlock Text="START" FontSize="12" FontWeight="SemiBold" Foreground="#64FFD1" HorizontalAlignment="Center" />
                             </Button>
-                            <Button Grid.Column="2" Command="{Binding StopCommand}" HorizontalAlignment="Stretch"
-                                    Background="#2e1a1a" BorderThickness="0" Padding="12,8">
-                                <TextBlock Text="STOP" FontSize="13" FontWeight="SemiBold" Foreground="#FF7070" HorizontalAlignment="Center" />
+                            <Button Grid.Column="2" Command="{Binding PauseResumeCommand}" HorizontalAlignment="Stretch"
+                                    Background="#1a2a2e" BorderThickness="0" Padding="8,8">
+                                <TextBlock Text="{Binding PauseResumeText}" FontSize="12" FontWeight="SemiBold" Foreground="#FFD166" HorizontalAlignment="Center" />
+                            </Button>
+                            <Button Grid.Column="4" Command="{Binding StopCommand}" HorizontalAlignment="Stretch"
+                                    Background="#2e1a1a" BorderThickness="0" Padding="8,8">
+                                <TextBlock Text="STOP" FontSize="12" FontWeight="SemiBold" Foreground="#FF7070" HorizontalAlignment="Center" />
                             </Button>
                         </Grid>
+
+                        <!-- CPM Display -->
+                        <TextBlock HorizontalAlignment="Center" Margin="0,6,0,0" FontSize="12" Foreground="#6c7086">
+                            <Run Text="⚡ CPM: " />
+                            <Run Text="{Binding CPM}" Foreground="#00FFB2" FontWeight="Bold" />
+                        </TextBlock>
                     </StackPanel>
                 </Border>
 

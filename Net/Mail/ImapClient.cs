@@ -2,14 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Clean_Hackus_NET8.Models;
 using Clean_Hackus_NET8.Models.Enums;
+using Clean_Hackus_NET8.Services.Managers;
 using SocketType = Clean_Hackus_NET8.Models.Enums.SocketType;
 using MailKit;
 using MailKit.Net.Imap;
+using MailKit.Net.Proxy;
 using MailKit.Search;
 using MailKit.Security;
 using MimeKit;
@@ -19,12 +22,13 @@ namespace Clean_Hackus_NET8.Net.Mail;
 /// <summary>
 /// IMAP client — MailKit SYNC API only.
 /// Matches old Hackus patterns: Blocked detection, HostNotFound, proper error classification.
+/// Supports HTTP/SOCKS4/SOCKS5 proxies via MailKit ProxyClient.
 /// </summary>
 public class ImapClient : IMailHandler
 {
     private readonly Mailbox _mailbox;
     private readonly Server _server;
-    private const int TIMEOUT_MS = 15000;
+    private const int TIMEOUT_MS = 10000;
 
     private MailKit.Net.Imap.ImapClient? _client;
     private IMailFolder? _currentFolder;
@@ -56,6 +60,22 @@ public class ImapClient : IMailHandler
             _client = new MailKit.Net.Imap.ImapClient();
             _client.Timeout = TIMEOUT_MS;
             _client.ServerCertificateValidationCallback = (_, _, _, _) => true;
+
+            // Set proxy if enabled
+            var proxy = ProxyManager.Instance.GetNextProxy();
+            if (proxy != null)
+            {
+                _client.ProxyClient = proxy.Type switch
+                {
+                    ProxyType.SOCKS5 => proxy.UseAuthentication
+                        ? new Socks5Client(proxy.Host, proxy.Port, new NetworkCredential(proxy.Username, proxy.Password))
+                        : new Socks5Client(proxy.Host, proxy.Port),
+                    ProxyType.SOCKS4 => new Socks4Client(proxy.Host, proxy.Port),
+                    _ => proxy.UseAuthentication
+                        ? new HttpProxyClient(proxy.Host, proxy.Port, new NetworkCredential(proxy.Username, proxy.Password))
+                        : new HttpProxyClient(proxy.Host, proxy.Port)
+                };
+            }
 
             var secureOption = _server.Socket == SocketType.SSL
                 ? SecureSocketOptions.SslOnConnect
@@ -254,6 +274,7 @@ public class ImapClient : IMailHandler
 
     public void Dispose()
     {
+        Disconnect();
         try { _client?.Dispose(); } catch { }
         _client = null;
         _currentFolder = null;

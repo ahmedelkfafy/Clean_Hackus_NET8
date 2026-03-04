@@ -21,10 +21,11 @@ public class ServerDatabase
     private readonly ConcurrentDictionary<string, List<Server>> _imapCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, List<Server>> _pop3Servers = new(StringComparer.OrdinalIgnoreCase);
 
+    // Support multiple .db files
+    private readonly record struct DbInfo(string Path, string Table, string ColDomain, string ColServer, string ColPort, string? ColSocket);
+    private readonly List<DbInfo> _imapDatabases = [];
+
     private string? _pop3CachePath;
-    private string? _imapDbPath;
-    private string? _imapTableName;
-    private string? _colDomain, _colServer, _colPort, _colSocket;
     private int _totalImapCount;
 
     private ServerDatabase() { }
@@ -33,7 +34,7 @@ public class ServerDatabase
     public int Pop3ServerCount => _pop3Servers.Count;
 
     /// <summary>
-    /// Loads the user's IMAP server .db file. Only reads schema + count, not all rows.
+    /// Loads the user's IMAP server .db file. Supports loading multiple files.
     /// </summary>
     public int LoadImapDatabase(string dbPath)
     {
@@ -53,20 +54,16 @@ public class ServerDatabase
 
             if (domainCol == null || serverCol == null || portCol == null) return 0;
 
-            // Store schema info for lazy queries
-            _imapDbPath = dbPath;
-            _imapTableName = tableName;
-            _colDomain = domainCol;
-            _colServer = serverCol;
-            _colPort = portCol;
-            _colSocket = socketCol;
+            // Store this DB info for lazy queries
+            _imapDatabases.Add(new DbInfo(dbPath, tableName, domainCol, serverCol, portCol, socketCol));
 
-            // Get count only
+            // Get count
             using var countCmd = connection.CreateCommand();
             countCmd.CommandText = $"SELECT COUNT(*) FROM \"{tableName}\"";
-            _totalImapCount += Convert.ToInt32(countCmd.ExecuteScalar());
+            var count = Convert.ToInt32(countCmd.ExecuteScalar());
+            _totalImapCount += count;
 
-            return _totalImapCount;
+            return count;
         }
         catch (Exception ex)
         {
@@ -76,54 +73,57 @@ public class ServerDatabase
         }
     }
 
-    /// <summary>Get IMAP servers for a domain. Queries DB lazily and caches results.</summary>
+    /// <summary>Get IMAP servers for a domain. Queries ALL loaded DBs lazily and caches results.</summary>
     public List<Server>? GetImapServers(string domain)
     {
         if (_imapCache.TryGetValue(domain, out var cached))
             return cached.Count > 0 ? cached : null;
 
-        if (_imapDbPath == null || _imapTableName == null) return null;
+        if (_imapDatabases.Count == 0) return null;
 
-        // Query DB for this specific domain
+        // Query ALL loaded DBs for this domain
         var servers = new List<Server>();
-        try
+        foreach (var db in _imapDatabases)
         {
-            using var conn = new SqliteConnection($"Data Source={_imapDbPath};Mode=ReadOnly");
-            conn.Open();
-
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = _colSocket != null
-                ? $"SELECT \"{_colServer}\", \"{_colPort}\", \"{_colSocket}\" FROM \"{_imapTableName}\" WHERE LOWER(\"{_colDomain}\") = $domain"
-                : $"SELECT \"{_colServer}\", \"{_colPort}\" FROM \"{_imapTableName}\" WHERE LOWER(\"{_colDomain}\") = $domain";
-            cmd.Parameters.AddWithValue("$domain", domain.ToLowerInvariant());
-
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
+            try
             {
-                try
-                {
-                    var hostname = reader.GetString(0).Trim();
-                    var port = reader.GetInt32(1);
-                    var socket = _colSocket != null
-                        ? ParseSocketType(reader.GetValue(2))
-                        : (port == 993 || port == 995 ? SocketType.SSL : SocketType.Plain);
+                using var conn = new SqliteConnection($"Data Source={db.Path};Mode=ReadOnly;Cache=Shared");
+                conn.Open();
 
-                    if (!string.IsNullOrEmpty(hostname))
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = db.ColSocket != null
+                    ? $"SELECT \"{db.ColServer}\", \"{db.ColPort}\", \"{db.ColSocket}\" FROM \"{db.Table}\" WHERE LOWER(\"{db.ColDomain}\") = $domain"
+                    : $"SELECT \"{db.ColServer}\", \"{db.ColPort}\" FROM \"{db.Table}\" WHERE LOWER(\"{db.ColDomain}\") = $domain";
+                cmd.Parameters.AddWithValue("$domain", domain.ToLowerInvariant());
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    try
                     {
-                        servers.Add(new Server
+                        var hostname = reader.GetString(0).Trim();
+                        var port = reader.GetInt32(1);
+                        var socket = db.ColSocket != null
+                            ? ParseSocketType(reader.GetValue(2))
+                            : (port == 993 || port == 995 ? SocketType.SSL : SocketType.Plain);
+
+                        if (!string.IsNullOrEmpty(hostname))
                         {
-                            Domain = domain,
-                            Hostname = hostname,
-                            Port = port,
-                            Protocol = ProtocolType.IMAP,
-                            Socket = socket
-                        });
+                            servers.Add(new Server
+                            {
+                                Domain = domain,
+                                Hostname = hostname,
+                                Port = port,
+                                Protocol = ProtocolType.IMAP,
+                                Socket = socket
+                            });
+                        }
                     }
+                    catch { }
                 }
-                catch { }
             }
+            catch { }
         }
-        catch { }
 
         _imapCache[domain] = servers;
         return servers.Count > 0 ? servers : null;

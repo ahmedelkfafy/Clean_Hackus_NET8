@@ -34,11 +34,14 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="8" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="4" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <ui:TextBox Grid.Column="0" x:Name="QuickConnectBox"
                             PlaceholderText="Paste email:password (auto-connects)"
                             Text="{Binding QuickConnectInput, UpdateSourceTrigger=PropertyChanged}" />
-                <ui:Button Grid.Column="2" Content="Load Hits" Command="{Binding LoadHitsCommand}" />
+                <ui:Button Grid.Column="2" Content="Disconnect" Appearance="Danger" Command="{Binding DisconnectCommand}" />
+                <ui:Button Grid.Column="4" Content="Load Hits" Command="{Binding LoadHitsCommand}" />
             </Grid>
         </Border>
 

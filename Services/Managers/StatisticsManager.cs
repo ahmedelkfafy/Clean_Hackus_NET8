@@ -1,13 +1,33 @@
+using System.ComponentModel;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Clean_Hackus_NET8.Models.Enums;
 
 namespace Clean_Hackus_NET8.Services.Managers;
 
-public class StatisticsManager
+public class StatisticsManager : INotifyPropertyChanged
 {
     private static readonly StatisticsManager _instance = new();
     public static StatisticsManager Instance => _instance;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void Notify([CallerMemberName] string? name = null)
+    {
+        var handler = PropertyChanged;
+        if (handler == null) return;
+
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher != null && !dispatcher.CheckAccess())
+        {
+            dispatcher.BeginInvoke(() => handler(this, new PropertyChangedEventArgs(name)));
+        }
+        else
+        {
+            handler(this, new PropertyChangedEventArgs(name));
+        }
+    }
 
     private int _loadedStrings;
     private int _checkedStrings;
@@ -23,9 +43,9 @@ public class StatisticsManager
     private int _errorMailsCount;
     private int _noHostMailsCount;
 
-    public int LoadedStrings { get => _loadedStrings; set => _loadedStrings = value; }
+    public int LoadedStrings { get => _loadedStrings; set { _loadedStrings = value; Notify(); } }
     public int CheckedStrings => _checkedStrings;
-    public int LoadedProxy { get => _loadedProxy; set => _loadedProxy = value; }
+    public int LoadedProxy { get => _loadedProxy; set { _loadedProxy = value; Notify(); } }
 
     public int GoodMailsCount => _goodMailsCount;
     public int FoundMailsCount => _foundMailsCount;
@@ -43,16 +63,73 @@ public class StatisticsManager
 
     private StatisticsManager() { }
 
-    public void IncrementChecked() => Interlocked.Increment(ref _checkedStrings);
-    public void IncrementGood() { Interlocked.Increment(ref _goodMailsCount); IncrementChecked(); }
-    public void IncrementFound() { Interlocked.Increment(ref _foundMailsCount); }
-    public void IncrementBad() { Interlocked.Increment(ref _badMailsCount); IncrementChecked(); }
-    public void IncrementTwoFactor() { Interlocked.Increment(ref _twoFactorMailsCount); IncrementChecked(); }
-    public void IncrementMultipassword() { Interlocked.Increment(ref _multipasswordMailsCount); IncrementChecked(); }
-    public void IncrementBlocked() { Interlocked.Increment(ref _blockedMailsCount); IncrementChecked(); }
-    public void IncrementError() { Interlocked.Increment(ref _errorMailsCount); IncrementChecked(); }
-    public void IncrementNoHost() { Interlocked.Increment(ref _noHostMailsCount); IncrementChecked(); }
-    public void IncrementCaptcha() { Interlocked.Increment(ref _captchaMailsCount); IncrementChecked(); }
+    public void IncrementChecked()
+    {
+        Interlocked.Increment(ref _checkedStrings);
+        Notify(nameof(CheckedStrings));
+    }
+
+    public void IncrementGood()
+    {
+        Interlocked.Increment(ref _goodMailsCount);
+        Notify(nameof(GoodMailsCount));
+        IncrementChecked();
+    }
+
+    public void IncrementFound()
+    {
+        Interlocked.Increment(ref _foundMailsCount);
+        Notify(nameof(FoundMailsCount));
+    }
+
+    public void IncrementBad()
+    {
+        Interlocked.Increment(ref _badMailsCount);
+        Notify(nameof(BadMailsCount));
+        IncrementChecked();
+    }
+
+    public void IncrementTwoFactor()
+    {
+        Interlocked.Increment(ref _twoFactorMailsCount);
+        Notify(nameof(TwoFactorMailsCount));
+        IncrementChecked();
+    }
+
+    public void IncrementMultipassword()
+    {
+        Interlocked.Increment(ref _multipasswordMailsCount);
+        Notify(nameof(MultipasswordMailsCount));
+        IncrementChecked();
+    }
+
+    public void IncrementBlocked()
+    {
+        Interlocked.Increment(ref _blockedMailsCount);
+        Notify(nameof(BlockedMailsCount));
+        IncrementChecked();
+    }
+
+    public void IncrementError()
+    {
+        Interlocked.Increment(ref _errorMailsCount);
+        Notify(nameof(ErrorMailsCount));
+        IncrementChecked();
+    }
+
+    public void IncrementNoHost()
+    {
+        Interlocked.Increment(ref _noHostMailsCount);
+        Notify(nameof(NoHostMailsCount));
+        IncrementChecked();
+    }
+
+    public void IncrementCaptcha()
+    {
+        Interlocked.Increment(ref _captchaMailsCount);
+        Notify(nameof(CaptchaMailsCount));
+        IncrementChecked();
+    }
 
     public void Increment(OperationResult result)
     {
@@ -89,5 +166,17 @@ public class StatisticsManager
         BadDetails.Clear();
         BlockedDetails.Clear();
         ErrorDetails.Clear();
+
+        // Notify all properties cleared
+        Notify(nameof(GoodMailsCount));
+        Notify(nameof(FoundMailsCount));
+        Notify(nameof(BadMailsCount));
+        Notify(nameof(TwoFactorMailsCount));
+        Notify(nameof(MultipasswordMailsCount));
+        Notify(nameof(BlockedMailsCount));
+        Notify(nameof(ErrorMailsCount));
+        Notify(nameof(NoHostMailsCount));
+        Notify(nameof(CaptchaMailsCount));
+        Notify(nameof(CheckedStrings));
     }
 }

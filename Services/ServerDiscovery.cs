@@ -13,7 +13,7 @@ using Clean_Hackus_NET8.Models.Enums;
 namespace Clean_Hackus_NET8.Services;
 
 /// <summary>
-/// Auto-discovers POP3 server configurations for domains.
+/// Auto-discovers POP3 and IMAP server configurations for domains.
 /// Tries methods in order: ISPDB → AutoDiscover → AutoConfig → Well-Known → Heuristics → MX Records.
 /// </summary>
 public class ServerDiscovery
@@ -24,6 +24,8 @@ public class ServerDiscovery
     };
 
     private static readonly LookupClient _dns = new();
+
+    // ─── POP3 Discovery ───────────────────────────────────────────────
 
     /// <summary>
     /// Discover POP3 server for a domain. Returns null if all methods fail.
@@ -36,46 +38,82 @@ public class ServerDiscovery
             return cached[0];
 
         // 1. ISPDB (Mozilla Thunderbird)
-        var server = await TryIspdbAsync(domain, ct);
-        if (server != null) return server;
+        var server = await TryIspdbAsync(domain, "pop3", ProtocolType.POP3, ct);
+        if (server != null) { ServerDatabase.Instance.SavePop3ToCache(server); return server; }
 
         // 2. AutoDiscover
-        server = await TryAutoDiscoverAsync(domain, ct);
-        if (server != null) return server;
+        server = await TryAutoDiscoverAsync(domain, "POP3", ProtocolType.POP3, ct);
+        if (server != null) { ServerDatabase.Instance.SavePop3ToCache(server); return server; }
 
         // 3. AutoConfig
-        server = await TryAutoConfigAsync(domain, ct);
-        if (server != null) return server;
+        server = await TryAutoConfigAsync(domain, "pop3", ProtocolType.POP3, ct);
+        if (server != null) { ServerDatabase.Instance.SavePop3ToCache(server); return server; }
 
         // 4. Well-Known URI
-        server = await TryWellKnownAsync(domain, ct);
-        if (server != null) return server;
+        server = await TryWellKnownAsync(domain, "pop3", ProtocolType.POP3, ct);
+        if (server != null) { ServerDatabase.Instance.SavePop3ToCache(server); return server; }
 
-        // 5. Heuristics (try common hostnames)
-        server = await TryHeuristicsAsync(domain, ct);
-        if (server != null) return server;
+        // 5. Heuristics
+        server = await TryHeuristicsAsync(domain, ProtocolType.POP3, ct);
+        if (server != null) { ServerDatabase.Instance.SavePop3ToCache(server); return server; }
 
         // 6. MX Records
-        server = await TryMxRecordsAsync(domain, ct);
+        server = await TryMxRecordsAsync(domain, ProtocolType.POP3, ct);
+        if (server != null) ServerDatabase.Instance.SavePop3ToCache(server);
         return server;
     }
 
-    // ─── 1. ISPDB (Mozilla) ───────────────────────────────────────────
+    // ─── IMAP Discovery ───────────────────────────────────────────────
 
-    private static async Task<Server?> TryIspdbAsync(string domain, CancellationToken ct)
+    /// <summary>
+    /// Discover IMAP server for a domain. Returns null if all methods fail.
+    /// </summary>
+    public static async Task<Server?> DiscoverImapAsync(string domain, CancellationToken ct = default)
+    {
+        // 0. Check DB cache first
+        var cached = ServerDatabase.Instance.GetImapServers(domain);
+        if (cached != null && cached.Count > 0)
+            return cached[0];
+
+        // 1. ISPDB (Mozilla Thunderbird)
+        var server = await TryIspdbAsync(domain, "imap", ProtocolType.IMAP, ct);
+        if (server != null) return server;
+
+        // 2. AutoDiscover
+        server = await TryAutoDiscoverAsync(domain, "IMAP", ProtocolType.IMAP, ct);
+        if (server != null) return server;
+
+        // 3. AutoConfig
+        server = await TryAutoConfigAsync(domain, "imap", ProtocolType.IMAP, ct);
+        if (server != null) return server;
+
+        // 4. Well-Known URI
+        server = await TryWellKnownAsync(domain, "imap", ProtocolType.IMAP, ct);
+        if (server != null) return server;
+
+        // 5. Heuristics
+        server = await TryHeuristicsAsync(domain, ProtocolType.IMAP, ct);
+        if (server != null) return server;
+
+        // 6. MX Records
+        server = await TryMxRecordsAsync(domain, ProtocolType.IMAP, ct);
+        return server;
+    }
+
+    // ─── Shared discovery methods ─────────────────────────────────────
+
+    private static async Task<Server?> TryIspdbAsync(string domain, string protocolFilter, ProtocolType proto, CancellationToken ct)
     {
         try
         {
             var url = $"https://autoconfig.thunderbird.net/v1.1/{domain}";
             var xml = await _http.GetStringAsync(url, ct);
-            return ParseAutoConfigXml(xml, domain, "pop3");
+            return ParseAutoConfigXml(xml, domain, protocolFilter, proto);
         }
         catch { return null; }
     }
 
-    // ─── 2. AutoDiscover ──────────────────────────────────────────────
-
-    private static async Task<Server?> TryAutoDiscoverAsync(string domain, CancellationToken ct)
+    private static async Task<Server?> TryAutoDiscoverAsync(string domain, string protocolFilter, ProtocolType proto, CancellationToken ct)
     {
         var urls = new[]
         {
@@ -88,45 +126,43 @@ public class ServerDiscovery
             try
             {
                 var xml = await _http.GetStringAsync(url, ct);
-                return ParseAutoDiscoverXml(xml, domain);
+                return ParseAutoDiscoverXml(xml, domain, protocolFilter, proto);
             }
             catch { }
         }
         return null;
     }
 
-    // ─── 3. AutoConfig ────────────────────────────────────────────────
-
-    private static async Task<Server?> TryAutoConfigAsync(string domain, CancellationToken ct)
+    private static async Task<Server?> TryAutoConfigAsync(string domain, string protocolFilter, ProtocolType proto, CancellationToken ct)
     {
         try
         {
             var url = $"https://autoconfig.{domain}/mail/config-v1.1.xml";
             var xml = await _http.GetStringAsync(url, ct);
-            return ParseAutoConfigXml(xml, domain, "pop3");
+            return ParseAutoConfigXml(xml, domain, protocolFilter, proto);
         }
         catch { return null; }
     }
 
-    // ─── 4. Well-Known URI ────────────────────────────────────────────
-
-    private static async Task<Server?> TryWellKnownAsync(string domain, CancellationToken ct)
+    private static async Task<Server?> TryWellKnownAsync(string domain, string protocolFilter, ProtocolType proto, CancellationToken ct)
     {
         try
         {
             var url = $"https://{domain}/.well-known/autoconfig/mail/config-v1.1.xml";
             var xml = await _http.GetStringAsync(url, ct);
-            return ParseAutoConfigXml(xml, domain, "pop3");
+            return ParseAutoConfigXml(xml, domain, protocolFilter, proto);
         }
         catch { return null; }
     }
 
-    // ─── 5. Heuristics ────────────────────────────────────────────────
-
-    private static async Task<Server?> TryHeuristicsAsync(string domain, CancellationToken ct)
+    private static async Task<Server?> TryHeuristicsAsync(string domain, ProtocolType proto, CancellationToken ct)
     {
-        var prefixes = new[] { "pop3", "pop", "mail" };
-        var portConfigs = new[] { (995, SocketType.SSL), (110, SocketType.Plain) };
+        var prefixes = proto == ProtocolType.POP3
+            ? new[] { "pop3", "pop", "mail" }
+            : new[] { "imap", "mail" };
+        var portConfigs = proto == ProtocolType.POP3
+            ? new[] { (995, SocketType.SSL), (110, SocketType.Plain) }
+            : new[] { (993, SocketType.SSL), (143, SocketType.Plain) };
 
         foreach (var prefix in prefixes)
         {
@@ -140,7 +176,7 @@ public class ServerDiscovery
                         Domain = domain,
                         Hostname = hostname,
                         Port = port,
-                        Protocol = ProtocolType.POP3,
+                        Protocol = proto,
                         Socket = socket
                     };
                 }
@@ -149,20 +185,21 @@ public class ServerDiscovery
         return null;
     }
 
-    // ─── 6. MX Records ───────────────────────────────────────────────
-
-    private static async Task<Server?> TryMxRecordsAsync(string domain, CancellationToken ct)
+    private static async Task<Server?> TryMxRecordsAsync(string domain, ProtocolType proto, CancellationToken ct)
     {
         try
         {
             var result = await _dns.QueryAsync(domain, QueryType.MX, cancellationToken: ct);
             var mxRecords = result.Answers.MxRecords().OrderBy(mx => mx.Preference);
 
+            var prefix = proto == ProtocolType.POP3 ? "pop" : "imap";
+            var portConfigs = proto == ProtocolType.POP3
+                ? new[] { (995, SocketType.SSL), (110, SocketType.Plain) }
+                : new[] { (993, SocketType.SSL), (143, SocketType.Plain) };
+
             foreach (var mx in mxRecords)
             {
                 var mxHost = mx.Exchange.Value.TrimEnd('.');
-                // Try to derive pop3 hostname from MX (e.g., mx1.mail.example.com → pop.example.com)
-                var portConfigs = new[] { (995, SocketType.SSL), (110, SocketType.Plain) };
 
                 // Try the MX host directly first
                 foreach (var (port, socket) in portConfigs)
@@ -174,28 +211,28 @@ public class ServerDiscovery
                             Domain = domain,
                             Hostname = mxHost,
                             Port = port,
-                            Protocol = ProtocolType.POP3,
+                            Protocol = proto,
                             Socket = socket
                         };
                     }
                 }
 
-                // Try pop3.{base domain from MX}
+                // Try {prefix}.{base domain from MX}
                 var parts = mxHost.Split('.');
                 if (parts.Length >= 2)
                 {
                     var baseDomain = string.Join('.', parts[^2..]);
-                    var popHost = $"pop.{baseDomain}";
+                    var derivedHost = $"{prefix}.{baseDomain}";
                     foreach (var (port, socket) in portConfigs)
                     {
-                        if (await TestConnectionAsync(popHost, port, ct))
+                        if (await TestConnectionAsync(derivedHost, port, ct))
                         {
                             return new Server
                             {
                                 Domain = domain,
-                                Hostname = popHost,
+                                Hostname = derivedHost,
                                 Port = port,
-                                Protocol = ProtocolType.POP3,
+                                Protocol = proto,
                                 Socket = socket
                             };
                         }
@@ -209,7 +246,7 @@ public class ServerDiscovery
 
     // ─── XML Parsers ──────────────────────────────────────────────────
 
-    private static Server? ParseAutoConfigXml(string xml, string domain, string protocolType)
+    private static Server? ParseAutoConfigXml(string xml, string domain, string protocolType, ProtocolType proto)
     {
         try
         {
@@ -235,7 +272,7 @@ public class ServerDiscovery
                         Domain = domain,
                         Hostname = hostname,
                         Port = port,
-                        Protocol = ProtocolType.POP3,
+                        Protocol = proto,
                         Socket = isSSL ? SocketType.SSL : SocketType.Plain
                     };
                 }
@@ -245,21 +282,21 @@ public class ServerDiscovery
         return null;
     }
 
-    private static Server? ParseAutoDiscoverXml(string xml, string domain)
+    private static Server? ParseAutoDiscoverXml(string xml, string domain, string protocolFilter, ProtocolType proto)
     {
         try
         {
             var doc = XDocument.Parse(xml);
             var protocols = doc.Descendants().Where(e => e.Name.LocalName == "Protocol");
 
-            foreach (var proto in protocols)
+            foreach (var p in protocols)
             {
-                var type = proto.Elements().FirstOrDefault(e => e.Name.LocalName == "Type")?.Value;
-                if (type?.Equals("POP3", StringComparison.OrdinalIgnoreCase) != true) continue;
+                var type = p.Elements().FirstOrDefault(e => e.Name.LocalName == "Type")?.Value;
+                if (type?.Equals(protocolFilter, StringComparison.OrdinalIgnoreCase) != true) continue;
 
-                var server = proto.Elements().FirstOrDefault(e => e.Name.LocalName == "Server")?.Value;
-                var portStr = proto.Elements().FirstOrDefault(e => e.Name.LocalName == "Port")?.Value;
-                var ssl = proto.Elements().FirstOrDefault(e => e.Name.LocalName == "SSL")?.Value;
+                var server = p.Elements().FirstOrDefault(e => e.Name.LocalName == "Server")?.Value;
+                var portStr = p.Elements().FirstOrDefault(e => e.Name.LocalName == "Port")?.Value;
+                var ssl = p.Elements().FirstOrDefault(e => e.Name.LocalName == "SSL")?.Value;
 
                 if (!string.IsNullOrEmpty(server) && int.TryParse(portStr, out int port))
                 {
@@ -268,7 +305,7 @@ public class ServerDiscovery
                         Domain = domain,
                         Hostname = server,
                         Port = port,
-                        Protocol = ProtocolType.POP3,
+                        Protocol = proto,
                         Socket = ssl?.Equals("on", StringComparison.OrdinalIgnoreCase) == true
                             ? SocketType.SSL : SocketType.Plain
                     };

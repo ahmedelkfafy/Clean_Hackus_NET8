@@ -12,7 +12,7 @@ public class StartupViewModel : BindableObject
     public string Username
     {
         get => _username;
-        set { _username = value; OnPropertyChanged(); }
+        set { _username = value; OnPropertyChanged(); System.Windows.Input.CommandManager.InvalidateRequerySuggested(); }
     }
 
     private string _password = "";
@@ -47,7 +47,7 @@ public class StartupViewModel : BindableObject
     public bool IsAuthorizing
     {
         get => _isAuthorizing;
-        set { _isAuthorizing = value; OnPropertyChanged(); }
+        set { _isAuthorizing = value; OnPropertyChanged(); System.Windows.Input.CommandManager.InvalidateRequerySuggested(); }
     }
 
     public string CurrentVersion => "NET 8 Core Version 3.0";

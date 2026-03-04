@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -69,6 +70,20 @@ public class MainViewModel : BindableObject
 
     public double ProgressPercent => _comboLoaded > 0 ? (double)Statistics.CheckedStrings / _comboLoaded * 100 : 0;
     public double ProgressDash => _comboLoaded > 0 ? 100 - (double)Statistics.CheckedStrings / _comboLoaded * 100 : 100;
+
+    private int _cpm;
+    public int CPM
+    {
+        get => _cpm;
+        set { _cpm = value; OnPropertyChanged(); }
+    }
+
+    private string _pauseResumeText = "PAUSE";
+    public string PauseResumeText
+    {
+        get => _pauseResumeText;
+        set { _pauseResumeText = value; OnPropertyChanged(); }
+    }
 
     // Settings
     private bool _useProxy;
@@ -147,7 +162,10 @@ public class MainViewModel : BindableObject
     public ICommand LoadProxiesCommand { get; }
     public ICommand StartCommand { get; }
     public ICommand StopCommand { get; }
+    public ICommand PauseResumeCommand { get; }
     public ICommand OpenViewerCommand { get; }
+
+    private static string SettingsPath => Path.Combine(App.DataFolder, "settings.json");
 
     public MainViewModel()
     {
@@ -156,11 +174,15 @@ public class MainViewModel : BindableObject
         LoadProxiesCommand = new RelayCommand(_ => ExecuteLoadProxies());
         StartCommand = new RelayCommand(_ => ExecuteStart());
         StopCommand = new RelayCommand(_ => ExecuteStop());
+        PauseResumeCommand = new RelayCommand(_ => ExecutePauseResume());
         OpenViewerCommand = new RelayCommand(_ => ExecuteOpenViewer());
 
         // Show auto-loaded server count
         ServersLoaded = ServerDatabase.Instance.ImapServerCount;
         if (ServersLoaded > 0) StatusText = $"Ready. {ServersLoaded} IMAP servers auto-loaded from Data folder.";
+
+        // Load saved settings
+        LoadSettings();
     }
 
     // ─── Load Combo ───────────────────────────────────────────────────
@@ -252,27 +274,45 @@ public class MainViewModel : BindableObject
         }
 
         ResultsSaver.Instance.Initialize();
+        SaveSettings(); // Persist current settings
         Progress = 0;
+        CPM = 0;
         StatusText = $"Running... {ThreadCount} threads | {(KeywordEnabled ? "IMAP+Keyword" : "POP3→IMAP")}";
 
         var progressTimer = new System.Timers.Timer(500);
+        int lastChecked = 0;
+        DateTime lastTime = DateTime.UtcNow;
         progressTimer.Elapsed += (_, _) =>
         {
             if (_totalCombo > 0)
                 Progress = (double)Statistics.CheckedStrings / _totalCombo * 100;
+
+            // CPM calculation
+            var now = DateTime.UtcNow;
+            var elapsed = (now - lastTime).TotalMinutes;
+            if (elapsed > 0)
+            {
+                var diff = Statistics.CheckedStrings - lastChecked;
+                CPM = (int)(diff / elapsed);
+                lastChecked = Statistics.CheckedStrings;
+                lastTime = now;
+            }
         };
         progressTimer.Start();
 
-        // When all threads finish
-        Threads.OnAllThreadsFinished += () =>
+        // When all threads finish (self-unsubscribing to prevent leak)
+        Action? finishHandler = null;
+        finishHandler = () =>
         {
             progressTimer.Stop();
             Progress = 100;
+            Threads.OnAllThreadsFinished -= finishHandler;
             System.Windows.Application.Current?.Dispatcher.Invoke(() =>
             {
                 StatusText = $"Done! Good:{Statistics.GoodMailsCount} Bad:{Statistics.BadMailsCount} Error:{Statistics.ErrorMailsCount} NoHost:{Statistics.NoHostMailsCount}";
             });
         };
+        Threads.OnAllThreadsFinished += finishHandler;
 
         // N real threads, each runs this synchronous worker
         int threadCount = Math.Min(ThreadCount, _totalCombo);
@@ -300,7 +340,26 @@ public class MainViewModel : BindableObject
     private void ExecuteStop()
     {
         Threads.Stop();
+        PauseResumeText = "PAUSE";
         StatusText = "Stopping...";
+    }
+
+    // ─── Pause / Resume ───────────────────────────────────────────────
+
+    private void ExecutePauseResume()
+    {
+        if (Threads.State == Models.Enums.CheckerState.Running)
+        {
+            Threads.Pause();
+            PauseResumeText = "RESUME";
+            StatusText = "Paused.";
+        }
+        else if (Threads.State == Models.Enums.CheckerState.Paused)
+        {
+            Threads.Resume();
+            PauseResumeText = "PAUSE";
+            StatusText = $"Running... {ThreadCount} threads | {(KeywordEnabled ? "IMAP+Keyword" : "POP3→IMAP")}";
+        }
     }
 
     // ─── Open Viewer ──────────────────────────────────────────────────
@@ -316,5 +375,60 @@ public class MainViewModel : BindableObject
         {
             StatusText = $"Viewer error: {ex.Message}";
         }
+    }
+
+    // ─── Settings Persistence ─────────────────────────────────────────
+
+    private void LoadSettings()
+    {
+        try
+        {
+            if (File.Exists(SettingsPath))
+            {
+                var json = File.ReadAllText(SettingsPath);
+                var s = JsonSerializer.Deserialize<SettingsData>(json);
+                if (s != null)
+                {
+                    ThreadCount = s.ThreadCount > 0 ? s.ThreadCount : 100;
+                    UseProxy = s.UseProxy;
+                    SelectedProxyTypeIndex = s.ProxyTypeIndex;
+                    KeywordEnabled = s.KeywordEnabled;
+                    KeywordSender = s.KeywordSender ?? "";
+                    KeywordSubject = s.KeywordSubject ?? "";
+                    KeywordBody = s.KeywordBody ?? "";
+                }
+            }
+        }
+        catch { }
+    }
+
+    private void SaveSettings()
+    {
+        try
+        {
+            var s = new SettingsData
+            {
+                ThreadCount = ThreadCount,
+                UseProxy = UseProxy,
+                ProxyTypeIndex = SelectedProxyTypeIndex,
+                KeywordEnabled = KeywordEnabled,
+                KeywordSender = KeywordSender,
+                KeywordSubject = KeywordSubject,
+                KeywordBody = KeywordBody
+            };
+            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(s, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch { }
+    }
+
+    private class SettingsData
+    {
+        public int ThreadCount { get; set; } = 100;
+        public bool UseProxy { get; set; }
+        public int ProxyTypeIndex { get; set; }
+        public bool KeywordEnabled { get; set; }
+        public string KeywordSender { get; set; } = "";
+        public string KeywordSubject { get; set; } = "";
+        public string KeywordBody { get; set; } = "";
     }
 }

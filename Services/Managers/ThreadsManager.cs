@@ -127,6 +127,7 @@ public class ThreadsManager
         {
             State = CheckerState.Stopped;
             _stopRequested = false;
+            ResultsSaver.Instance.FlushAll();
             OnAllThreadsFinished?.Invoke();
         }
     }

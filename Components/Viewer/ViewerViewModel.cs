@@ -65,6 +65,7 @@ public class ViewerViewModel : BindableObject
     }
 
     private string _quickConnectInput = "";
+    private CancellationTokenSource? _quickConnectDebounce;
     public string QuickConnectInput
     {
         get => _quickConnectInput;
@@ -73,8 +74,22 @@ public class ViewerViewModel : BindableObject
             _quickConnectInput = value;
             OnPropertyChanged();
             if (!string.IsNullOrWhiteSpace(value) && value.Contains(':') && value.Contains('@'))
-                ExecuteQuickConnect();
+                DebounceQuickConnect();
         }
+    }
+
+    private void DebounceQuickConnect()
+    {
+        _quickConnectDebounce?.Cancel();
+        _quickConnectDebounce = new CancellationTokenSource();
+        var token = _quickConnectDebounce.Token;
+
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            Thread.Sleep(800);
+            if (!token.IsCancellationRequested)
+                Dispatch(() => ExecuteQuickConnect());
+        });
     }
 
     private string _statusText = "Paste email:password to connect";
@@ -86,12 +101,14 @@ public class ViewerViewModel : BindableObject
 
     public ICommand LoadHitsCommand { get; }
     public ICommand SearchCommand { get; }
+    public ICommand DisconnectCommand { get; }
 
     public ViewerViewModel(WebView2 webView)
     {
         _webView = webView;
         LoadHitsCommand = new RelayCommand(_ => ExecuteLoadHits());
         SearchCommand = new RelayCommand(_ => ThreadPool.QueueUserWorkItem(_ => DoSearch()));
+        DisconnectCommand = new RelayCommand(_ => ExecuteDisconnect());
         _ = InitWebViewAsync();
     }
 
@@ -330,20 +347,47 @@ public class ViewerViewModel : BindableObject
     {
         try
         {
-            string html;
+            string bodyHtml;
 
             if (item.HasHtml)
             {
-                // Show the ORIGINAL HTML body exactly like the real email
-                html = item.HtmlBody;
+                bodyHtml = item.HtmlBody;
             }
             else
             {
-                // Plain text → wrap in minimal styling
-                html = "<html><head><meta charset='utf-8'/></head><body style='background:#fff;color:#222;font-family:Segoe UI,sans-serif;padding:20px;font-size:14px'>"
-                    + $"<pre style='white-space:pre-wrap;word-wrap:break-word'>{System.Net.WebUtility.HtmlEncode(item.TextBody)}</pre>"
-                    + "</body></html>";
+                // Plain text → wrap in styled block
+                bodyHtml = $"<pre style='white-space:pre-wrap;word-wrap:break-word;font-family:Segoe UI,sans-serif;font-size:14px'>{System.Net.WebUtility.HtmlEncode(item.TextBody)}</pre>";
             }
+
+            // Build full HTML document with email header
+            var html = $@"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'/>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'/>
+    <style>
+        body {{ margin:0; padding:0; font-family: 'Segoe UI', Tahoma, sans-serif; background:#fff; color:#222; }}
+        .email-header {{ background:#f5f5f5; border-bottom:1px solid #ddd; padding:16px 20px; }}
+        .email-header .subject {{ font-size:18px; font-weight:600; color:#1a1a1a; margin-bottom:8px; }}
+        .email-header .meta {{ font-size:13px; color:#555; }}
+        .email-header .meta b {{ color:#333; }}
+        .email-body {{ padding:20px; }}
+        img {{ max-width:100%; height:auto; }}
+    </style>
+</head>
+<body>
+    <div class='email-header'>
+        <div class='subject'>{System.Net.WebUtility.HtmlEncode(item.Subject)}</div>
+        <div class='meta'>
+            <b>From:</b> {System.Net.WebUtility.HtmlEncode(item.From)}<br/>
+            <b>Date:</b> {System.Net.WebUtility.HtmlEncode(item.Date)}
+        </div>
+    </div>
+    <div class='email-body'>
+        {bodyHtml}
+    </div>
+</body>
+</html>";
 
             _webView.Dispatcher.Invoke(() => _webView.CoreWebView2?.NavigateToString(html));
         }
@@ -354,15 +398,77 @@ public class ViewerViewModel : BindableObject
 
     private static EmailItem MimeToItem(MimeMessage msg, UniqueId uid)
     {
+        var htmlBody = msg.HtmlBody ?? "";
+        var textBody = msg.TextBody ?? "";
+
+        // If no HtmlBody, try to find HTML in nested MIME parts
+        if (string.IsNullOrEmpty(htmlBody))
+        {
+            var htmlPart = FindHtmlPart(msg.Body);
+            if (htmlPart != null)
+                htmlBody = htmlPart;
+        }
+
+        // Convert CID references to inline base64 data URIs
+        if (!string.IsNullOrEmpty(htmlBody))
+        {
+            htmlBody = ReplaceCidWithBase64(htmlBody, msg);
+        }
+
         return new EmailItem
         {
             Subject = msg.Subject ?? "(No Subject)",
             From = msg.From?.ToString() ?? "",
             Date = msg.Date.ToString("yyyy-MM-dd HH:mm"),
-            HtmlBody = msg.HtmlBody ?? "",
-            TextBody = msg.TextBody ?? "",
+            HtmlBody = htmlBody,
+            TextBody = textBody,
             Uid = uid
         };
+    }
+
+    /// <summary>Find HTML part in nested MIME structure.</summary>
+    private static string? FindHtmlPart(MimeEntity? entity)
+    {
+        if (entity is TextPart text && text.IsHtml)
+            return text.Text;
+
+        if (entity is Multipart multipart)
+        {
+            foreach (var part in multipart)
+            {
+                var found = FindHtmlPart(part);
+                if (found != null) return found;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Replace cid: image references with inline base64 data URIs.</summary>
+    private static string ReplaceCidWithBase64(string html, MimeMessage msg)
+    {
+        try
+        {
+            foreach (var bodyPart in msg.BodyParts)
+            {
+                if (bodyPart is not MimePart mime || string.IsNullOrEmpty(mime.ContentId))
+                    continue;
+
+                var cid = mime.ContentId.Trim('<', '>');
+                if (!html.Contains(cid, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                using var ms = new MemoryStream();
+                mime.Content.DecodeTo(ms);
+                var base64 = Convert.ToBase64String(ms.ToArray());
+                var mimeType = mime.ContentType.MimeType ?? "image/png";
+                var dataUri = $"data:{mimeType};base64,{base64}";
+
+                html = html.Replace($"cid:{cid}", dataUri, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch { }
+        return html;
     }
 
     private static void Dispatch(Action action)
@@ -402,5 +508,24 @@ public class ViewerViewModel : BindableObject
             list.Add(new Server { Domain = domain, Hostname = $"pop.{domain}", Port = 110, Protocol = ProtocolType.POP3, Socket = SocketType.Plain });
         }
         return list;
+    }
+
+    private void ExecuteDisconnect()
+    {
+        Dispatch(() =>
+        {
+            Accounts.Clear();
+            Folders.Clear();
+            Messages.Clear();
+            SelectedAccount = null;
+            SelectedFolder = null;
+            SelectedMessage = null;
+            QuickConnectInput = "";
+            StatusText = "Disconnected. Paste email:password to connect";
+            _ = _webView.EnsureCoreWebView2Async().ContinueWith(_ =>
+            {
+                Dispatch(() => _webView.NavigateToString("<html><body style='background:#1e1e2e;color:#cdd6f4;font-family:Consolas;padding:40px;'>Disconnected.</body></html>"));
+            });
+        });
     }
 }

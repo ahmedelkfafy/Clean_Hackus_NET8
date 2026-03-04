@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using ProtocolType = Clean_Hackus_NET8.Models.Enums.ProtocolType;
+using SocketType = Clean_Hackus_NET8.Models.Enums.SocketType;
 using System.Threading;
 using Clean_Hackus_NET8.Models;
 using Clean_Hackus_NET8.Models.Enums;
@@ -66,7 +67,9 @@ public class CheckerEngine
             {
                 case OperationResult.Ok:
                     _stats.IncrementGood();
-                    _results.SaveGood($"{mailbox.Address}:{mailbox.Password} | {server.Protocol} {server.Hostname}:{server.Port}");
+                    _results.SaveGood($"{mailbox.Address}:{mailbox.Password}");
+                    // Cache working server for future lookups
+                    CacheWorkingServer(server);
                     return;
 
                 case OperationResult.Bad:
@@ -98,6 +101,18 @@ public class CheckerEngine
         // All servers failed
         _stats.IncrementError();
         _results.SaveError($"{mailbox.Address}:{mailbox.Password}");
+    }
+
+    /// <summary>Cache a working server back to the DB for future re-use.</summary>
+    private void CacheWorkingServer(Server server)
+    {
+        try
+        {
+            if (server.Protocol == ProtocolType.POP3)
+                _serverDb.SavePop3ToCache(server);
+            // IMAP servers from DB are already cached; auto-discovered ones get cached here
+        }
+        catch { }
     }
 
     private OperationResult TryServer(Mailbox mailbox, Server server, bool keywordMode,
@@ -195,7 +210,8 @@ public class CheckerEngine
             ioRetries++;
             if (ioRetries <= MAX_IO_RETRIES)
             {
-                Thread.Sleep(ioRetries * 300);
+                // Yield instead of heavy sleep — let other threads work
+                Thread.Yield();
                 return OperationResult.Error; // will retry
             }
         }
@@ -204,7 +220,7 @@ public class CheckerEngine
             timeoutRetries++;
             if (timeoutRetries <= MAX_TIMEOUT_RETRIES)
             {
-                Thread.Sleep(timeoutRetries * 500);
+                Thread.Yield();
                 return OperationResult.Error;
             }
         }
@@ -236,12 +252,27 @@ public class CheckerEngine
         if (fromDb != null && fromDb.Count > 0)
         {
             // SSL first, then Plain (like old)
-            chain.AddRange(fromDb.Where(s => s.Socket == Models.Enums.SocketType.SSL));
-            chain.AddRange(fromDb.Where(s => s.Socket == Models.Enums.SocketType.Plain));
+            chain.AddRange(fromDb.Where(s => s.Socket == SocketType.SSL));
+            chain.AddRange(fromDb.Where(s => s.Socket == SocketType.Plain));
         }
         else
         {
-            // Auto-discover common ports
+            // Try auto-discovery first
+            try
+            {
+                var discovered = proto == ProtocolType.POP3
+                    ? ServerDiscovery.DiscoverPop3Async(domain).GetAwaiter().GetResult()
+                    : ServerDiscovery.DiscoverImapAsync(domain).GetAwaiter().GetResult();
+
+                if (discovered != null)
+                {
+                    chain.Add(discovered);
+                    return;
+                }
+            }
+            catch { }
+
+            // Fallback to common hostnames
             int sslPort = proto == ProtocolType.POP3 ? 995 : 993;
             int plainPort = proto == ProtocolType.POP3 ? 110 : 143;
 
@@ -249,13 +280,26 @@ public class CheckerEngine
             {
                 Domain = domain, Hostname = $"{prefix}.{domain}",
                 Port = sslPort, Protocol = proto,
-                Socket = Models.Enums.SocketType.SSL
+                Socket = SocketType.SSL
             });
             chain.Add(new Server
             {
                 Domain = domain, Hostname = $"{prefix}.{domain}",
                 Port = plainPort, Protocol = proto,
-                Socket = Models.Enums.SocketType.Plain
+                Socket = SocketType.Plain
+            });
+
+            chain.Add(new Server
+            {
+                Domain = domain, Hostname = $"mail.{domain}",
+                Port = sslPort, Protocol = proto,
+                Socket = SocketType.SSL
+            });
+            chain.Add(new Server
+            {
+                Domain = domain, Hostname = $"mail.{domain}",
+                Port = plainPort, Protocol = proto,
+                Socket = SocketType.Plain
             });
         }
     }

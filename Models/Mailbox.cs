@@ -4,9 +4,9 @@ namespace Clean_Hackus_NET8.Models;
 
 public class Mailbox
 {
-    public string Address { get; set; }
-    public string Password { get; set; }
-    public string Domain { get; set; }
+    public string Address { get; set; } = "";
+    public string Password { get; set; } = "";
+    public string Domain { get; set; } = "";
 
     public Mailbox() { }
 

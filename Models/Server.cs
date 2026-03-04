@@ -6,8 +6,8 @@ namespace Clean_Hackus_NET8.Models;
 
 public class Server
 {
-    public string Domain { get; set; }
-    public string Hostname { get; set; }
+    public string Domain { get; set; } = "";
+    public string Hostname { get; set; } = "";
     public int Port { get; set; } = 993;
     public ProtocolType Protocol { get; set; }
     public SocketType Socket { get; set; }

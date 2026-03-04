@@ -26,9 +26,20 @@ public class ComboLoader
             var line = rawLine.Trim();
             if (string.IsNullOrEmpty(line)) continue;
 
-            // Support both : and ; delimiters
-            var separatorIndex = line.IndexOf(':');
-            if (separatorIndex <= 0) separatorIndex = line.IndexOf(';');
+            // Find the email:password separator
+            // Look for ':' after '@' to handle passwords containing ':'
+            var atIndex = line.IndexOf('@');
+            int separatorIndex;
+            if (atIndex > 0)
+            {
+                separatorIndex = line.IndexOf(':', atIndex);
+                if (separatorIndex <= 0) separatorIndex = line.IndexOf(';', atIndex);
+            }
+            else
+            {
+                separatorIndex = line.IndexOf(':');
+                if (separatorIndex <= 0) separatorIndex = line.IndexOf(';');
+            }
             if (separatorIndex <= 0) continue;
 
             var email = line[..separatorIndex].Trim();
@@ -37,8 +48,8 @@ public class ComboLoader
             if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password)) continue;
             if (!email.Contains('@')) continue;
 
-            var atIndex = email.IndexOf('@');
-            var domain = email[(atIndex + 1)..].ToLowerInvariant();
+            var domainStart = email.IndexOf('@');
+            var domain = email[(domainStart + 1)..].ToLowerInvariant();
 
             queue.Enqueue(new Mailbox(email, password, domain));
         }
