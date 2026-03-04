@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 using Clean_Hackus_NET8.Models;
 using Clean_Hackus_NET8.Models.Enums;
 using SocketType = Clean_Hackus_NET8.Models.Enums.SocketType;
@@ -257,4 +258,21 @@ public class ImapClient : IMailHandler
         _client = null;
         _currentFolder = null;
     }
+
+    // ─── Async wrappers (IMailHandler) ────────────────────────────────
+
+    public Task<OperationResult> ConnectAsync() => Task.FromResult(Connect());
+    public Task<OperationResult> LoginAsync() => Task.FromResult(Login());
+    public Task<OperationResult> SelectFolderAsync(string folderName) => Task.FromResult(SelectFolder(folderName));
+    public Task SearchMessagesAsync()
+    {
+        var kw = KeywordSettings.Instance;
+        if (kw.Enabled && kw.HasKeywords)
+        {
+            var query = kw.BuildImapSearchQuery();
+            Search(query);
+        }
+        return Task.CompletedTask;
+    }
+    public Task DisconnectAsync() { Disconnect(); return Task.CompletedTask; }
 }

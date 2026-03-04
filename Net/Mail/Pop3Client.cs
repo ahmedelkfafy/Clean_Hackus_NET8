@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Net.Sockets;
 using Clean_Hackus_NET8.Models;
 using Clean_Hackus_NET8.Models.Enums;
@@ -102,4 +103,12 @@ public class Pop3Client : IMailHandler
         try { _client?.Dispose(); } catch { }
         _client = null;
     }
+
+    // ─── Async wrappers (IMailHandler) ────────────────────────────────
+
+    public Task<OperationResult> ConnectAsync() => Task.FromResult(Connect());
+    public Task<OperationResult> LoginAsync() => Task.FromResult(Login());
+    public Task<OperationResult> SelectFolderAsync(string folderName) => Task.FromResult(OperationResult.Ok);
+    public Task SearchMessagesAsync() => Task.CompletedTask;
+    public Task DisconnectAsync() { Disconnect(); return Task.CompletedTask; }
 }

@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Clean_Hackus_NET8.Models.Enums;
 
 namespace Clean_Hackus_NET8.Net.Mail;
@@ -10,4 +11,11 @@ public interface IMailHandler : IDisposable
     OperationResult Connect();
     OperationResult Login();
     void Disconnect();
+
+    // Async wrappers used by MailHandler
+    Task<OperationResult> ConnectAsync();
+    Task<OperationResult> LoginAsync();
+    Task<OperationResult> SelectFolderAsync(string folderName);
+    Task SearchMessagesAsync();
+    Task DisconnectAsync();
 }
